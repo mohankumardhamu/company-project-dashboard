@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, currentUser, hashPassword, requireRole } from '../auth';
@@ -65,24 +65,47 @@ usersRouter.post(
   })
 );
 
+const listQuerySchema = z.object({
+  // Comma-separated, e.g. "ENGINEER,PM" — lets a caller narrow to a pool of roles at once.
+  role: z.string().optional(),
+  name: z.string().trim().min(1).max(120).optional(),
+  email: z.string().trim().min(1).max(255).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
 /**
  * Directory listing. VP/Director see everyone. A PM sees the staffable pool
  * (engineers and PMs) so they can build a team. An engineer sees only the
  * people they share a team with.
+ *
+ * `role`, `name` and `email` narrow the result — the "Add member" picker uses
+ * all three so a large org stays searchable instead of shipping every user
+ * to the browser. `limit` caps how many rows come back.
  */
 usersRouter.get(
   '/',
   ah(async (req, res) => {
     const me = currentUser(req);
-    const roleFilter = req.query.role ? roleSchema.parse(String(req.query.role)) : undefined;
+    const query = listQuerySchema.parse(req.query);
+    const roleFilter = query.role
+      ? query.role
+          .split(',')
+          .map((r) => r.trim())
+          .filter(Boolean)
+          .map((r) => roleSchema.parse(r))
+      : undefined;
+    const nameFilter = query.name ? ilike(users.name, `%${query.name}%`) : undefined;
+    const emailFilter = query.email ? ilike(users.email, `%${query.email}%`) : undefined;
 
     let where: SQL | undefined;
     if (me.role === 'ADMIN' || me.role === 'VP' || me.role === 'DIRECTOR') {
-      where = roleFilter ? eq(users.role, roleFilter) : undefined;
+      where = and(roleFilter ? inArray(users.role, roleFilter) : undefined, nameFilter, emailFilter);
     } else if (me.role === 'PM') {
       where = and(
         eq(users.active, true),
-        roleFilter ? eq(users.role, roleFilter) : inArray(users.role, ['ENGINEER', 'PM'])
+        inArray(users.role, roleFilter ?? ['ENGINEER', 'PM']),
+        nameFilter,
+        emailFilter
       );
     } else {
       const teamIds = await visibleTeamIds(me);
@@ -93,16 +116,19 @@ usersRouter.get(
             .where(inArray(teamMembers.teamId, teamIds))
         : undefined;
       where = and(
-        roleFilter ? eq(users.role, roleFilter) : undefined,
-        teammateIds ? or(eq(users.id, me.id), inArray(users.id, teammateIds)) : eq(users.id, me.id)
+        roleFilter ? inArray(users.role, roleFilter) : undefined,
+        teammateIds ? or(eq(users.id, me.id), inArray(users.id, teammateIds)) : eq(users.id, me.id),
+        nameFilter,
+        emailFilter
       );
     }
 
-    const rows = await db
+    const baseQuery = db
       .select(publicColumns)
       .from(users)
       .where(where)
       .orderBy(asc(users.role), asc(users.name));
+    const rows = query.limit ? await baseQuery.limit(query.limit) : await baseQuery;
     res.json(rows);
   })
 );

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/Shell';
 import {
@@ -298,6 +298,9 @@ export default function TeamDetailPage() {
   );
 }
 
+/** Only Engineers and PMs are staffable onto a team; VPs/Directors/Admins never appear here. */
+const STAFFABLE_ROLES = ['ENGINEER', 'PM'] as const;
+
 function AddMemberModal({
   teamId,
   existing,
@@ -309,13 +312,30 @@ function AddMemberModal({
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const { data, error, loading } = useApi<DirectoryUser[]>('/users');
+  const [filters, setFilters] = useState({ role: '', name: '', email: '' });
+  // Debounced so typing a name/email doesn't fire a request per keystroke —
+  // matters once the directory has hundreds or thousands of people.
+  const [debounced, setDebounced] = useState(filters);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(filters), 300);
+    return () => clearTimeout(t);
+  }, [filters]);
+
+  const setFilter = (key: keyof typeof filters) => (e: { target: { value: string } }) =>
+    setFilters((f) => ({ ...f, [key]: e.target.value }));
+
+  const params = new URLSearchParams();
+  params.set('role', debounced.role || STAFFABLE_ROLES.join(','));
+  if (debounced.name.trim()) params.set('name', debounced.name.trim());
+  if (debounced.email.trim()) params.set('email', debounced.email.trim());
+  params.set('limit', '50');
+
+  const { data, error, loading } = useApi<DirectoryUser[]>(`/users?${params.toString()}`);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const candidates = (data ?? []).filter(
-    (u) => u.active && !existing.includes(u.id) && (u.role === 'ENGINEER' || u.role === 'PM')
-  );
+  const candidates = (data ?? []).filter((u) => u.active && !existing.includes(u.id));
+  const hasFilter = Boolean(debounced.role || debounced.name.trim() || debounced.email.trim());
 
   async function add(userId: string) {
     setBusyId(userId);
@@ -333,11 +353,44 @@ function AddMemberModal({
   return (
     <Modal title="Add a member" onClose={onClose}>
       <ErrorNote message={error ?? actionError} />
+      <div className="form-grid" style={{ marginBottom: 16 }}>
+        <div className="field">
+          <label htmlFor="am-role">Role</label>
+          <select id="am-role" value={filters.role} onChange={setFilter('role')}>
+            <option value="">All (Engineer + PM)</option>
+            <option value="ENGINEER">Engineer</option>
+            <option value="PM">PM</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="am-name">Name</label>
+          <input
+            id="am-name"
+            value={filters.name}
+            onChange={setFilter('name')}
+            placeholder="Search by name"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="am-email">Email</label>
+          <input
+            id="am-email"
+            value={filters.email}
+            onChange={setFilter('email')}
+            placeholder="Search by email"
+          />
+        </div>
+      </div>
+
       {loading && <Loading />}
       {data && candidates.length === 0 && (
-        <Empty title="Nobody left to add">Everyone available is already on this team.</Empty>
+        <Empty title="No matches">
+          {hasFilter
+            ? 'Nobody matches those filters — try a different name, email or role.'
+            : 'Everyone available is already on this team.'}
+        </Empty>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
         {candidates.map((u) => (
           <div className="demo-row" key={u.id} style={{ cursor: 'default' }}>
             <span className="row" style={{ gap: 9, flexWrap: 'nowrap' }}>
@@ -356,6 +409,11 @@ function AddMemberModal({
           </div>
         ))}
       </div>
+      {data && data.length === 50 && (
+        <p className="muted small" style={{ marginTop: 8 }}>
+          Showing the first 50 matches — narrow the filters to find someone specific.
+        </p>
+      )}
     </Modal>
   );
 }
