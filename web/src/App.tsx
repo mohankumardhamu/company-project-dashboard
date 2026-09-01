@@ -52,7 +52,7 @@ export default function App() {
         <Route
           path="/reports"
           element={
-            <Guard roles={['PM', 'DIRECTOR', 'VP']}>
+            <Guard roles={['ADMIN', 'PM', 'DIRECTOR', 'VP']}>
               <Reports />
             </Guard>
           }
@@ -60,7 +60,7 @@ export default function App() {
         <Route
           path="/people"
           element={
-            <Guard roles={['VP', 'DIRECTOR']}>
+            <Guard roles={['ADMIN', 'VP', 'DIRECTOR']}>
               <People />
             </Guard>
           }

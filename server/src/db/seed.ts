@@ -48,9 +48,14 @@ async function main() {
     createdById: createdById ?? null,
   });
 
+  const [admin] = await db
+    .insert(users)
+    .values(mk(process.env.SEED_ADMIN_EMAIL ?? 'admin@acme.com', 'System Admin', 'ADMIN'))
+    .returning();
+
   const [vp] = await db
     .insert(users)
-    .values(mk(process.env.SEED_VP_EMAIL ?? 'vp@acme.com', 'Priya Raghavan', 'VP'))
+    .values(mk(process.env.SEED_VP_EMAIL ?? 'vp@acme.com', 'Priya Raghavan', 'VP', admin.id))
     .returning();
 
   const [dirEng, dirPlat] = await db
@@ -213,10 +218,11 @@ async function main() {
   }
 
   console.log(
-    `Seeded 2 projects, 4 teams, ${engineers.length + 6} users, ${createdTasks.length} tasks, ${logValues.length} work logs.`
+    `Seeded 2 projects, 4 teams, ${engineers.length + 7} users, ${createdTasks.length} tasks, ${logValues.length} work logs.`
   );
   console.log(`\nEvery account uses the password: ${PASSWORD}\n`);
   console.table([
+    { role: 'ADMIN', email: admin.email, sees: 'everything, onboards anyone' },
     { role: 'VP', email: vp.email, sees: 'everything' },
     { role: 'DIRECTOR', email: dirEng.email, sees: 'owns APEX' },
     { role: 'DIRECTOR', email: dirPlat.email, sees: 'owns HELIOS' },

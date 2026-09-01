@@ -34,7 +34,7 @@ async function isTeamMember(teamId: string, userId: string): Promise<boolean> {
 /** The PM who leads the team creates tasks and assigns them to team members. */
 tasksRouter.post(
   '/',
-  requireRole('PM'),
+  requireRole('ADMIN', 'PM'),
   ah(async (req, res) => {
     const me = currentUser(req);
     const body = createTaskSchema.parse(req.body);
@@ -103,7 +103,7 @@ tasksRouter.get(
         ...t,
         logCount: logs.length,
         loggedHours: Number(logs.reduce((s, l) => s + l.hours, 0).toFixed(2)),
-        canManage: me.role === 'PM' && t.team.pmId === me.id,
+        canManage: me.role === 'ADMIN' || (me.role === 'PM' && t.team.pmId === me.id),
       }))
     );
   })
@@ -182,7 +182,7 @@ tasksRouter.patch(
 
 tasksRouter.delete(
   '/:id',
-  requireRole('PM'),
+  requireRole('ADMIN', 'PM'),
   ah(async (req, res) => {
     const me = currentUser(req);
     const task = await db.query.tasks.findFirst({ where: eq(tasks.id, req.params.id) });

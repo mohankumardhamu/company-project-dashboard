@@ -19,8 +19,12 @@ const publicColumns = {
   createdAt: users.createdAt,
 };
 
-/** Who may create which roles. VP onboards anyone; Director onboards delivery staff. */
+/**
+ * Who may create which roles. Admin onboards anyone, including other Admins;
+ * VP onboards any business role; Director onboards delivery staff.
+ */
 const CREATABLE_ROLES: Record<Role, Role[]> = {
+  ADMIN: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'],
   VP: ['VP', 'DIRECTOR', 'PM', 'ENGINEER'],
   DIRECTOR: ['PM', 'ENGINEER'],
   PM: [],
@@ -38,7 +42,7 @@ const createUserSchema = z.object({
 
 usersRouter.post(
   '/',
-  requireRole('VP', 'DIRECTOR'),
+  requireRole('ADMIN', 'VP', 'DIRECTOR'),
   ah(async (req, res) => {
     const me = currentUser(req);
     const body = createUserSchema.parse(req.body);
@@ -73,7 +77,7 @@ usersRouter.get(
     const roleFilter = req.query.role ? roleSchema.parse(String(req.query.role)) : undefined;
 
     let where: SQL | undefined;
-    if (me.role === 'VP' || me.role === 'DIRECTOR') {
+    if (me.role === 'ADMIN' || me.role === 'VP' || me.role === 'DIRECTOR') {
       where = roleFilter ? eq(users.role, roleFilter) : undefined;
     } else if (me.role === 'PM') {
       where = and(
@@ -112,13 +116,16 @@ const updateUserSchema = z.object({
 
 usersRouter.patch(
   '/:id',
-  requireRole('VP'),
+  requireRole('ADMIN', 'VP'),
   ah(async (req, res) => {
     const me = currentUser(req);
     const body = updateUserSchema.parse(req.body);
     if (Object.keys(body).length === 0) throw badRequest('Nothing to update');
     if (req.params.id === me.id && body.active === false) {
       throw badRequest('You cannot deactivate your own account');
+    }
+    if (body.role === 'ADMIN' && me.role !== 'ADMIN') {
+      throw forbidden('Only an Admin can grant Admin access');
     }
 
     const [user] = await db

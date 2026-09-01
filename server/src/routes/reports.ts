@@ -8,7 +8,7 @@ import { buildWeeklyWorkbook } from '../reports/workbook';
 export const reportsRouter = Router();
 reportsRouter.use(authenticate);
 // Engineers log the work; PMs, Directors and VPs report on it.
-reportsRouter.use(requireRole('PM', 'DIRECTOR', 'VP'));
+reportsRouter.use(requireRole('ADMIN', 'PM', 'DIRECTOR', 'VP'));
 
 const querySchema = z.object({
   projectId: z.string().optional(),

@@ -8,11 +8,13 @@ import type { DirectoryUser, Role } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 const CREATABLE: Record<string, Role[]> = {
+  ADMIN: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'],
   VP: ['VP', 'DIRECTOR', 'PM', 'ENGINEER'],
   DIRECTOR: ['PM', 'ENGINEER'],
 };
 
 const ROLE_HELP: Record<Role, string> = {
+  ADMIN: 'Full access: onboards anyone, including other Admins, and manages every resource.',
   VP: 'Reads everything across the organisation.',
   DIRECTOR: 'Creates projects and attaches teams to them.',
   PM: 'Creates teams, adds members, assigns tasks, exports reports.',
@@ -40,7 +42,7 @@ export default function People() {
       <PageHeader
         title="People"
         subtitle={
-          can('VP')
+          can('ADMIN', 'VP')
             ? 'You can onboard anyone and deactivate accounts.'
             : 'You can onboard PMs and Engineers.'
         }
@@ -68,7 +70,7 @@ export default function People() {
                       <th>What they can do</th>
                       <th>Added</th>
                       <th>Status</th>
-                      {can('VP') && <th />}
+                      {can('ADMIN', 'VP') && <th />}
                     </tr>
                   </thead>
                   <tbody>
@@ -98,7 +100,7 @@ export default function People() {
                             <Badge tone="danger">Deactivated</Badge>
                           )}
                         </td>
-                        {can('VP') && (
+                        {can('ADMIN', 'VP') && (
                           <td style={{ textAlign: 'right' }}>
                             {u.id !== user?.id && (
                               <button className="btn sm ghost" onClick={() => toggleActive(u)}>

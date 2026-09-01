@@ -13,7 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createId } from './id';
 
-export const roleEnum = pgEnum('role', ['VP', 'DIRECTOR', 'PM', 'ENGINEER']);
+export const roleEnum = pgEnum('role', ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER']);
 export const projectStatusEnum = pgEnum('project_status', ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED']);
 export const taskStatusEnum = pgEnum('task_status', ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE']);
 export const taskPriorityEnum = pgEnum('task_priority', ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);

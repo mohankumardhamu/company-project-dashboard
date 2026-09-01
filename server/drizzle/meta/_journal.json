@@ -8,6 +8,13 @@
       "when": 1788266218331,
       "tag": "0000_messy_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788271597285,
+      "tag": "0001_lethal_sentry",
+      "breakpoints": true
     }
   ]
 }

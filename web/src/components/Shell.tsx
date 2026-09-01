@@ -12,12 +12,12 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: '◧', roles: ['VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
-  { to: '/projects', label: 'Projects', icon: '▤', roles: ['VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
-  { to: '/teams', label: 'Teams', icon: '◇', roles: ['VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
+  { to: '/', label: 'Dashboard', icon: '◧', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
+  { to: '/projects', label: 'Projects', icon: '▤', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
+  { to: '/teams', label: 'Teams', icon: '◇', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
   { to: '/my-work', label: 'My work', icon: '✓', roles: ['ENGINEER', 'PM'] },
-  { to: '/reports', label: 'Reports', icon: '⇩', roles: ['PM', 'DIRECTOR', 'VP'] },
-  { to: '/people', label: 'People', icon: '◍', roles: ['VP', 'DIRECTOR'] },
+  { to: '/reports', label: 'Reports', icon: '⇩', roles: ['ADMIN', 'PM', 'DIRECTOR', 'VP'] },
+  { to: '/people', label: 'People', icon: '◍', roles: ['ADMIN', 'VP', 'DIRECTOR'] },
 ];
 
 export default function Shell({ children }: { children: ReactNode }) {

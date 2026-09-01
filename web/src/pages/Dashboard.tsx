@@ -7,6 +7,7 @@ import type { Overview } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 const BLURB: Record<string, string> = {
+  ADMIN: 'Everything across the organisation, with full access to manage it.',
   VP: 'Everything across the organisation.',
   DIRECTOR: 'Your projects, their teams, and the work underneath.',
   PM: 'The teams you lead and the work they logged.',

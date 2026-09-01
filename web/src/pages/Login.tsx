@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth';
 import { ErrorNote } from '../components/ui';
 
 const DEMO_ACCOUNTS = [
+  { role: 'Admin', email: 'admin@acme.com', note: 'onboards anyone and manages everything' },
   { role: 'VP', email: 'vp@acme.com', note: 'sees the whole organisation' },
   { role: 'Director', email: 'director.eng@acme.com', note: 'owns the APEX project' },
   { role: 'PM', email: 'pm.payments@acme.com', note: 'leads Payments Core' },
@@ -38,6 +39,9 @@ export default function Login() {
         </div>
         <h2>One view of every project, team, member and task.</h2>
         <ul>
+          <li>
+            <strong>Admins</strong> onboard every account and hold full access to every resource.
+          </li>
           <li>
             <strong>Engineers</strong> log what they did each day against their tasks.
           </li>

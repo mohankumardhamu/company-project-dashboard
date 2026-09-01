@@ -76,7 +76,7 @@ export default function ProjectDetailPage() {
         }
         actions={
           <>
-            {can('PM', 'DIRECTOR', 'VP') && (
+            {can('ADMIN', 'PM', 'DIRECTOR', 'VP') && (
               <button className="btn" onClick={exportReport}>
                 Export weekly report
               </button>

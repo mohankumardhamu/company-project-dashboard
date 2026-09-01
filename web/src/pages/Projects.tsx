@@ -19,7 +19,7 @@ export default function Projects() {
         title="Projects"
         subtitle="A project holds the teams delivering it. Directors create projects and attach teams."
         actions={
-          can('DIRECTOR') && (
+          can('ADMIN', 'DIRECTOR') && (
             <button className="btn primary" onClick={() => setCreating(true)}>
               New project
             </button>
@@ -34,7 +34,7 @@ export default function Projects() {
           <Card flush>
             {data.length === 0 ? (
               <Empty title="No projects yet">
-                {can('DIRECTOR')
+                {can('ADMIN', 'DIRECTOR')
                   ? 'Create one to start attaching teams.'
                   : 'You will see a project here once one of your teams is attached to it.'}
               </Empty>

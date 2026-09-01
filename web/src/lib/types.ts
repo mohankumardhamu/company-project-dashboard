@@ -1,4 +1,4 @@
-export type Role = 'VP' | 'DIRECTOR' | 'PM' | 'ENGINEER';
+export type Role = 'ADMIN' | 'VP' | 'DIRECTOR' | 'PM' | 'ENGINEER';
 export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';

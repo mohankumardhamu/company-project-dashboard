@@ -72,12 +72,14 @@ export const WorkLogStatusBadge = ({ status }: { status: WorkLogStatus }) => (
 );
 
 const ROLE_TONE: Record<Role, Tone> = {
+  ADMIN: 'danger',
   VP: 'brand',
   DIRECTOR: 'brand',
   PM: 'warn',
   ENGINEER: 'neutral',
 };
 const ROLE_LABEL: Record<Role, string> = {
+  ADMIN: 'Admin',
   VP: 'VP',
   DIRECTOR: 'Director',
   PM: 'PM',

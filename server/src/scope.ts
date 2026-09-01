@@ -6,6 +6,8 @@ import { projects, teamMembers, teams } from './db/schema';
 /**
  * Visibility rules (read access), in one place so every route agrees:
  *
+ *   ADMIN     -> everything, org-wide. Same reach as a VP, plus write access
+ *                (see canManageTeam / canManageProject below).
  *   VP        -> everything, org-wide.
  *   DIRECTOR  -> every project, plus every team (including teams not yet
  *                attached to a project, so they can attach them).
@@ -21,6 +23,7 @@ const memberTeamIds = (userId: string) =>
 /** A WHERE fragment for the `teams` table, or undefined for "no restriction". */
 export function teamScope(user: AuthUser): SQL | undefined {
   switch (user.role) {
+    case 'ADMIN':
     case 'VP':
     case 'DIRECTOR':
       return undefined;
@@ -34,7 +37,7 @@ export function teamScope(user: AuthUser): SQL | undefined {
 
 /** A WHERE fragment for the `projects` table, or undefined for "no restriction". */
 export function projectScope(user: AuthUser): SQL | undefined {
-  if (user.role === 'VP' || user.role === 'DIRECTOR') return undefined;
+  if (user.role === 'ADMIN' || user.role === 'VP' || user.role === 'DIRECTOR') return undefined;
   const visibleProjectIds = db
     .select({ id: teams.projectId })
     .from(teams)
@@ -66,8 +69,9 @@ export async function canReadProject(user: AuthUser, projectId: string): Promise
   return rows.length > 0;
 }
 
-/** Write access to a team: the PM who leads it. VPs and Directors do not edit rosters. */
+/** Write access to a team: the PM who leads it, or an Admin (unrestricted). */
 export async function canManageTeam(user: AuthUser, teamId: string): Promise<boolean> {
+  if (user.role === 'ADMIN') return true;
   if (user.role !== 'PM') return false;
   const rows = await db
     .select({ id: teams.id })
@@ -77,8 +81,9 @@ export async function canManageTeam(user: AuthUser, teamId: string): Promise<boo
   return rows.length > 0;
 }
 
-/** Write access to a project: the Director who owns it. */
+/** Write access to a project: the Director who owns it, or an Admin (unrestricted). */
 export async function canManageProject(user: AuthUser, projectId: string): Promise<boolean> {
+  if (user.role === 'ADMIN') return true;
   if (user.role !== 'DIRECTOR') return false;
   const rows = await db
     .select({ id: projects.id })

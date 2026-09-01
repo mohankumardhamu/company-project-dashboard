@@ -2,7 +2,7 @@
 
 Role-based project, team and daily-status tracking. React frontend, Node/Express API, PostgreSQL via Drizzle ORM.
 
-Engineers log what they did each day against their tasks. PMs build teams and assign that work. Directors own projects and attach teams to them. VPs read everything. PMs, Directors and VPs export the week as an Excel workbook.
+Engineers log what they did each day against their tasks. PMs build teams and assign that work. Directors own projects and attach teams to them. VPs read everything. PMs, Directors and VPs export the week as an Excel workbook. Admins onboard every account and hold unrestricted access to every resource.
 
 ---
 
@@ -19,7 +19,7 @@ cd server
 cp .env.example .env          # edit JWT_SECRET before any real use
 npm install
 npm run db:migrate            # creates the schema
-npm run seed                  # demo org: 2 projects, 4 teams, 15 people, 3 weeks of logs
+npm run seed                  # demo org: 2 projects, 4 teams, 16 people, 3 weeks of logs
 npm run dev                   # http://localhost:4000
 
 # 3. Frontend (second terminal)
@@ -32,6 +32,7 @@ Open http://localhost:5173. Every seeded account uses the password `Passw0rd!`.
 
 | Role     | Email                        | What they see                       |
 | -------- | ---------------------------- | ----------------------------------- |
+| Admin    | `admin@acme.com`             | Everything — full access, onboards anyone |
 | VP       | `vp@acme.com`                | The whole organisation              |
 | Director | `director.eng@acme.com`      | Owns the APEX project               |
 | Director | `director.platform@acme.com` | Owns the HELIOS project             |
@@ -40,7 +41,7 @@ Open http://localhost:5173. Every seeded account uses the password `Passw0rd!`.
 | PM       | `pm.infra@acme.com`          | Leads Platform SRE                  |
 | Engineer | `eng.anita@acme.com`         | Own tasks and daily log             |
 
-The login screen lists four of these as one-click buttons.
+The login screen lists five of these as one-click buttons.
 
 ### Without Docker
 
@@ -52,24 +53,25 @@ Point `DATABASE_URL` in `server/.env` at any Postgres instance and run the same 
 
 Enforced server-side in `server/src/scope.ts` and the `requireRole` guards on each route — the UI only hides what the API already refuses.
 
-| Action                          | VP  | Director        | PM              | Engineer      |
-| ------------------------------- | --- | --------------- | --------------- | ------------- |
-| Create a project                | —   | ✓               | —               | —             |
-| Edit a project                  | —   | ✓ own only      | —               | —             |
-| Attach / detach a team          | —   | ✓ own project   | —               | —             |
-| Create a team                   | —   | —               | ✓               | —             |
-| Add / remove team members       | —   | —               | ✓ own team      | —             |
-| Create / edit / delete tasks    | —   | —               | ✓ own team      | —             |
-| Change a task's status          | —   | —               | ✓ own team      | ✓ own task    |
-| Log daily work                  | —   | —               | —               | ✓ own tasks   |
-| Export the weekly report        | ✓   | ✓               | ✓ own teams     | —             |
-| Onboard users                   | ✓ any role | ✓ PM, Engineer | —          | —             |
-| Deactivate an account           | ✓   | —               | —               | —             |
-| **Read scope**                  | everything | every project and team | own teams + their projects | own teams only |
+| Action                          | Admin | VP  | Director        | PM              | Engineer      |
+| ------------------------------- | ----- | --- | --------------- | --------------- | ------------- |
+| Create a project                | ✓ any | —   | ✓               | —               | —             |
+| Edit a project                  | ✓ any | —   | ✓ own only      | —               | —             |
+| Attach / detach a team          | ✓ any | —   | ✓ own project   | —               | —             |
+| Create a team                   | ✓ any | —   | —               | ✓               | —             |
+| Add / remove team members       | ✓ any | —   | —               | ✓ own team      | —             |
+| Create / edit / delete tasks    | ✓ any | —   | —               | ✓ own team      | —             |
+| Change a task's status          | ✓ any | —   | —               | ✓ own team      | ✓ own task    |
+| Log daily work                  | —     | —   | —               | —               | ✓ own tasks   |
+| Export the weekly report        | ✓     | ✓   | ✓               | ✓ own teams     | —             |
+| Onboard users                   | ✓ any role, incl. Admin | ✓ any role except Admin | ✓ PM, Engineer | — | — |
+| Change a role / deactivate an account | ✓   | ✓   | —               | —               | —             |
+| **Read scope**                  | everything | everything | every project and team | own teams + their projects | own teams only |
 
-Two deliberate choices worth knowing:
+Three deliberate choices worth knowing:
 
-- **VPs are read-only.** The brief gives the VP oversight, not delivery duties, so they cannot create projects or teams. They can onboard users, since somebody has to.
+- **Admins are the bootstrap superuser.** They exist to onboard the first VPs/Directors and to unblock anything ownership rules would otherwise lock behind a specific person — an Admin can manage any project or team regardless of who owns it. Only an Admin can create or promote another Admin.
+- **VPs are read-only.** The brief gives the VP oversight, not delivery duties, so they cannot create projects or teams. They can onboard users (any role except Admin), since somebody has to.
 - **Directors read every project but write only their own.** Multiple directors coexist without stepping on each other, while a VP-level view stays available to them.
 
 ### The intended flow
@@ -168,6 +170,6 @@ Before this handles real data:
 
 - **Set `JWT_SECRET`** to a long random value. The server refuses to boot in production with the development default.
 - **Tokens live in `localStorage`** (8-hour expiry) and are sent as bearer tokens. That is fine for an internal tool; if you need defence against XSS token theft, move to an httpOnly refresh cookie.
-- **There is no password reset or email flow.** A VP or Director sets a temporary password when onboarding someone, and a VP can change it. Wire in your identity provider if you have one — given a Spring/UAA background, putting this behind OIDC and mapping the four roles from token claims would replace `auth.ts` cleanly.
+- **There is no password reset or email flow.** An Admin, VP or Director sets a temporary password when onboarding someone, and an Admin or VP can change it. Wire in your identity provider if you have one — given a Spring/UAA background, putting this behind OIDC and mapping the five roles from token claims would replace `auth.ts` cleanly.
 - **No rate limiting on `/api/auth/login`.** Add `express-rate-limit` before exposing it.
 - `npm run build` in both directories produces the deployable output (`server/dist`, `web/dist`). Serve `web/dist` from any static host and point it at the API.

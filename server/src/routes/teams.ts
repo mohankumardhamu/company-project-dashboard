@@ -18,7 +18,7 @@ const teamSchema = z.object({
 /** Only a PM creates a team; they become its lead. */
 teamsRouter.post(
   '/',
-  requireRole('PM'),
+  requireRole('ADMIN', 'PM'),
   ah(async (req, res) => {
     const me = currentUser(req);
     const body = teamSchema.parse(req.body);
@@ -55,7 +55,7 @@ teamsRouter.get(
         memberCount: members.length,
         taskCount: t.length,
         openTaskCount: t.filter((x) => x.status !== 'DONE').length,
-        canManage: me.role === 'PM' && team.pmId === me.id,
+        canManage: me.role === 'ADMIN' || (me.role === 'PM' && team.pmId === me.id),
       }))
     );
   })
@@ -93,7 +93,7 @@ teamsRouter.get(
 
 teamsRouter.patch(
   '/:id',
-  requireRole('PM'),
+  requireRole('ADMIN', 'PM'),
   ah(async (req, res) => {
     const me = currentUser(req);
     if (!(await canManageTeam(me, req.params.id))) {
@@ -112,7 +112,7 @@ teamsRouter.patch(
 /** PM adds a member. Directors and VPs are org leadership, not team members. */
 teamsRouter.post(
   '/:id/members',
-  requireRole('PM'),
+  requireRole('ADMIN', 'PM'),
   ah(async (req, res) => {
     const me = currentUser(req);
     if (!(await canManageTeam(me, req.params.id))) {
@@ -122,8 +122,8 @@ teamsRouter.post(
     const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
     if (!user) throw notFound('User not found');
     if (!user.active) throw badRequest('That account is deactivated');
-    if (user.role === 'VP' || user.role === 'DIRECTOR') {
-      throw badRequest('VPs and Directors are not added as team members');
+    if (user.role === 'ADMIN' || user.role === 'VP' || user.role === 'DIRECTOR') {
+      throw badRequest('Admins, VPs and Directors are not added as team members');
     }
 
     const [member] = await db
@@ -139,7 +139,7 @@ teamsRouter.post(
 
 teamsRouter.delete(
   '/:id/members/:userId',
-  requireRole('PM'),
+  requireRole('ADMIN', 'PM'),
   ah(async (req, res) => {
     const me = currentUser(req);
     if (!(await canManageTeam(me, req.params.id))) {

@@ -18,7 +18,7 @@ export default function Teams() {
         title="Teams"
         subtitle="PMs create teams and staff them. A Director then attaches a team to a project."
         actions={
-          can('PM') && (
+          can('ADMIN', 'PM') && (
             <button className="btn primary" onClick={() => setCreating(true)}>
               New team
             </button>
@@ -33,7 +33,7 @@ export default function Teams() {
           <Card flush>
             {data.length === 0 ? (
               <Empty title="No teams yet">
-                {can('PM') ? 'Create your first team, then add members to it.' : 'You are not on a team yet.'}
+                {can('ADMIN', 'PM') ? 'Create your first team, then add members to it.' : 'You are not on a team yet.'}
               </Empty>
             ) : (
               <div className="table-wrap">

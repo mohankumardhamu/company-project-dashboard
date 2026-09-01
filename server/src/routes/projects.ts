@@ -25,7 +25,7 @@ const createProjectSchema = z.object({
 
 projectsRouter.post(
   '/',
-  requireRole('DIRECTOR'),
+  requireRole('ADMIN', 'DIRECTOR'),
   ah(async (req, res) => {
     const me = currentUser(req);
     const body = createProjectSchema.parse(req.body);
@@ -81,7 +81,7 @@ projectsRouter.get(
         teamCount: t.length,
         memberCount: memberBy.get(p.id) ?? 0,
         taskCount: taskBy.get(p.id) ?? 0,
-        canManage: me.role === 'DIRECTOR' && p.directorId === me.id,
+        canManage: me.role === 'ADMIN' || (me.role === 'DIRECTOR' && p.directorId === me.id),
       }))
     );
   })
@@ -119,7 +119,7 @@ projectsRouter.get(
 
     res.json({
       ...project,
-      canManage: me.role === 'DIRECTOR' && project.directorId === me.id,
+      canManage: me.role === 'ADMIN' || (me.role === 'DIRECTOR' && project.directorId === me.id),
       teams: project.teams.map((t) => ({
         ...t,
         members: [...t.members].sort((a, b) => a.user.name.localeCompare(b.user.name)),
@@ -130,7 +130,7 @@ projectsRouter.get(
 
 projectsRouter.patch(
   '/:id',
-  requireRole('DIRECTOR'),
+  requireRole('ADMIN', 'DIRECTOR'),
   ah(async (req, res) => {
     const me = currentUser(req);
     if (!(await canManageProject(me, req.params.id))) {
@@ -153,7 +153,7 @@ projectsRouter.patch(
 /** The pool a Director picks from: teams with no project, plus this project's own. */
 projectsRouter.get(
   '/:id/attachable-teams',
-  requireRole('DIRECTOR'),
+  requireRole('ADMIN', 'DIRECTOR'),
   ah(async (req, res) => {
     const rows = await db.query.teams.findMany({
       where: or(isNull(teams.projectId), eq(teams.projectId, req.params.id)),
@@ -176,7 +176,7 @@ projectsRouter.get(
 /** Director attaches an existing (PM-created) team to their project. */
 projectsRouter.post(
   '/:id/teams',
-  requireRole('DIRECTOR'),
+  requireRole('ADMIN', 'DIRECTOR'),
   ah(async (req, res) => {
     const me = currentUser(req);
     if (!(await canManageProject(me, req.params.id))) {
@@ -199,7 +199,7 @@ projectsRouter.post(
 
 projectsRouter.delete(
   '/:id/teams/:teamId',
-  requireRole('DIRECTOR'),
+  requireRole('ADMIN', 'DIRECTOR'),
   ah(async (req, res) => {
     const me = currentUser(req);
     if (!(await canManageProject(me, req.params.id))) {

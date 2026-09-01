@@ -352,7 +352,7 @@ export async function reportScopeOptions(user: AuthUser) {
       projectName: t.project ? `${t.project.code} — ${t.project.name}` : null,
     })),
     projects:
-      user.role === 'VP' || user.role === 'DIRECTOR'
+      user.role === 'ADMIN' || user.role === 'VP' || user.role === 'DIRECTOR'
         ? projectRows
         : projectRows.filter((p) => visibleProjectIds.has(p.id)),
   };
