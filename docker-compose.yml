@@ -17,5 +17,47 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    container_name: pdash-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://pdash:pdash@db:5432/pdash?schema=public
+      JWT_SECRET: change-me-to-a-long-random-string
+      JWT_EXPIRES_IN: 8h
+      PORT: 4000
+      CORS_ORIGIN: http://localhost:5173
+      SEED_VP_EMAIL: vp@acme.com
+      SEED_VP_PASSWORD: Passw0rd!
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./server:/app
+      - pdash-api-modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npm run db:migrate && npm run dev"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    container_name: pdash-web
+    restart: unless-stopped
+    environment:
+      VITE_API_TARGET: http://api:4000
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./web:/app
+      - pdash-web-modules:/app/node_modules
+    depends_on:
+      - api
+
 volumes:
   pdash-db-data:
+  pdash-api-modules:
+  pdash-web-modules:
