@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import type { Role } from '../lib/types';
-import { Avatar, RoleBadge } from './ui';
+import { Avatar, ErrorNote, Modal, RoleBadge } from './ui';
 
 interface NavItem {
   to: string;
@@ -22,6 +23,7 @@ const NAV: NavItem[] = [
 
 export default function Shell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
   if (!user) return null;
   const items = NAV.filter((i) => i.roles.includes(user.role));
 
@@ -54,14 +56,98 @@ export default function Shell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <RoleBadge role={user.role} />
-          <button className="btn sm" onClick={logout}>
-            Sign out
-          </button>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn sm" onClick={() => setChangingPassword(true)}>
+              Change password
+            </button>
+            <button className="btn sm" onClick={logout}>
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
       <main className="main">{children}</main>
+
+      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
     </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '' });
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post('/auth/change-password', form);
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change your password');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Change password" onClose={onClose}>
+      {done ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p className="muted small">Your password has been changed.</p>
+          <div className="form-actions">
+            <button type="button" className="btn primary" onClick={onClose}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <ErrorNote message={error} />
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="current-password">Current password</label>
+              <input
+                id="current-password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={form.currentPassword}
+                onChange={set('currentPassword')}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-password">New password</label>
+              <input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                value={form.newPassword}
+                onChange={set('newPassword')}
+                placeholder="At least 8 characters"
+              />
+            </div>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="btn primary" disabled={busy}>
+              {busy && <span className="spinner" />}
+              Change password
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
