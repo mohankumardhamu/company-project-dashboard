@@ -2,11 +2,12 @@ import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { AuthUser } from '../auth';
 import { addDays, endOfWeek, startOfWeek, today, type DateString } from '../dates';
 import { db } from '../db';
-import { projects, tasks, teamMembers, teams, workLogs } from '../db/schema';
+import { accounts, outcomes, projects, tasks, teamMembers, teams, workLogs } from '../db/schema';
 import { badRequest, forbidden, notFound } from '../http';
-import { canReadProject, canReadTeam, teamScope } from '../scope';
+import { canReadAccount, canReadProject, canReadTeam, teamScope } from '../scope';
 
 export interface WeeklyReportParams {
+  accountId?: string;
   projectId?: string;
   teamId?: string;
   week?: DateString;
@@ -52,6 +53,18 @@ export interface TaskRow {
   totalLoggedHours: number;
 }
 
+export interface OutcomeRow {
+  id: string;
+  landedOn: string;
+  title: string;
+  narrative: string;
+  category: string;
+  teamName: string;
+  projectName: string;
+  pmName: string;
+  verified: boolean;
+}
+
 export interface WeeklyReport {
   slug: string;
   title: string;
@@ -68,16 +81,38 @@ export interface WeeklyReport {
     membersWithNoEntries: number;
     tasksDone: number;
     blockedEntries: number;
+    outcomes: number;
+    outcomesUnverified: number;
   };
   members: MemberRow[];
   logs: LogRow[];
   tasks: TaskRow[];
+  outcomes: OutcomeRow[];
 }
 
 /** Resolves which teams the report covers, and checks the caller may read them. */
 async function resolveScope(user: AuthUser, params: WeeklyReportParams) {
-  if (params.projectId && params.teamId) {
-    throw badRequest('Pass either projectId or teamId, not both');
+  const scopesGiven = [params.accountId, params.projectId, params.teamId].filter(Boolean).length;
+  if (scopesGiven > 1) {
+    throw badRequest('Pass at most one of accountId, projectId or teamId');
+  }
+
+  if (params.accountId) {
+    if (!(await canReadAccount(user, params.accountId))) throw notFound('Account not found');
+    const account = await db.query.accounts.findFirst({ where: eq(accounts.id, params.accountId) });
+    if (!account) throw notFound('Account not found');
+    // A PM/Engineer reporting on a whole account gets only the teams they can see on it.
+    const readable = await db
+      .select({ id: teams.id })
+      .from(teams)
+      .innerJoin(projects, eq(projects.id, teams.projectId))
+      .where(and(eq(projects.accountId, account.id), teamScope(user)));
+    if (readable.length === 0) throw forbidden('You have no teams on this account to report on');
+    return {
+      teamIds: readable.map((t) => t.id),
+      label: `Account: ${account.code} — ${account.name}`,
+      slug: account.code,
+    };
   }
 
   if (params.teamId) {
@@ -155,14 +190,24 @@ export async function buildWeeklyReport(
       from,
       to,
       days: Array.from({ length: 7 }, (_, i) => addDays(from, i)),
-      totals: { hours: 0, entries: 0, members: 0, membersWithNoEntries: 0, tasksDone: 0, blockedEntries: 0 },
+      totals: {
+        hours: 0,
+        entries: 0,
+        members: 0,
+        membersWithNoEntries: 0,
+        tasksDone: 0,
+        blockedEntries: 0,
+        outcomes: 0,
+        outcomesUnverified: 0,
+      },
       members: [],
       logs: [],
       tasks: [],
+      outcomes: [],
     };
   }
 
-  const [taskRows, memberships] = await Promise.all([
+  const [taskRows, memberships, outcomeRows] = await Promise.all([
     db.query.tasks.findMany({
       where: inArray(tasks.teamId, teamIds),
       orderBy: [asc(tasks.status)],
@@ -185,7 +230,30 @@ export async function buildWeeklyReport(
         },
       },
     }),
+    db.query.outcomes.findMany({
+      where: and(inArray(outcomes.teamId, teamIds), gte(outcomes.landedOn, from), lte(outcomes.landedOn, to)),
+      orderBy: [asc(outcomes.landedOn)],
+      with: {
+        team: {
+          columns: { id: true, name: true },
+          with: { project: { columns: { name: true, code: true } } },
+        },
+        pm: { columns: { id: true, name: true } },
+      },
+    }),
   ]);
+
+  const outcomeTable: OutcomeRow[] = outcomeRows.map((o) => ({
+    id: o.id,
+    landedOn: o.landedOn,
+    title: o.title,
+    narrative: o.narrative,
+    category: o.category,
+    teamName: o.team.name,
+    projectName: projectNameOf(o.team.project),
+    pmName: o.pm.name,
+    verified: o.verifiedAt !== null,
+  }));
 
   const taskIds = taskRows.map((t) => t.id);
   const logRowsRaw = taskIds.length
@@ -323,37 +391,51 @@ export async function buildWeeklyReport(
       membersWithNoEntries: memberRows.filter((m) => m.entries === 0).length,
       tasksDone: taskTable.filter((t) => t.status === 'DONE').length,
       blockedEntries: logs.filter((l) => l.status === 'BLOCKED').length,
+      outcomes: outcomeTable.length,
+      outcomesUnverified: outcomeTable.filter((o) => !o.verified).length,
     },
     members: memberRows,
     logs,
     tasks: taskTable,
+    outcomes: outcomeTable,
   };
 }
 
-/** Teams and projects the caller may export, for the report picker. */
+export function weeklyReportFilename(report: Pick<WeeklyReport, 'slug' | 'from' | 'to'>): string {
+  const safeSlug = report.slug.replace(/[^A-Za-z0-9-_]+/g, '-').replace(/^-|-$/g, '') || 'report';
+  return `weekly-status_${safeSlug}_${report.from}_to_${report.to}.xlsx`;
+}
+
+/** Teams, projects and accounts the caller may export, for the report picker. */
 export async function reportScopeOptions(user: AuthUser) {
-  const [teamRows, projectRows] = await Promise.all([
+  const [teamRows, projectRows, accountRows] = await Promise.all([
     db.query.teams.findMany({
       where: teamScope(user),
       orderBy: [asc(teams.name)],
-      with: { project: { columns: { id: true, name: true, code: true } } },
+      with: { project: { columns: { id: true, name: true, code: true, accountId: true } } },
     }),
     db.query.projects.findMany({
       orderBy: [asc(projects.name)],
       columns: { id: true, name: true, code: true },
     }),
+    db.query.accounts.findMany({
+      orderBy: [asc(accounts.name)],
+      columns: { id: true, name: true, code: true },
+    }),
   ]);
 
+  const leadershipRole = user.role === 'ADMIN' || user.role === 'VP' || user.role === 'DIRECTOR';
   const visibleProjectIds = new Set(teamRows.map((t) => t.projectId).filter(Boolean) as string[]);
+  const visibleAccountIds = new Set(
+    teamRows.map((t) => t.project?.accountId).filter(Boolean) as string[]
+  );
   return {
     teams: teamRows.map((t) => ({
       id: t.id,
       name: t.name,
       projectName: t.project ? `${t.project.code} — ${t.project.name}` : null,
     })),
-    projects:
-      user.role === 'ADMIN' || user.role === 'VP' || user.role === 'DIRECTOR'
-        ? projectRows
-        : projectRows.filter((p) => visibleProjectIds.has(p.id)),
+    projects: leadershipRole ? projectRows : projectRows.filter((p) => visibleProjectIds.has(p.id)),
+    accounts: leadershipRole ? accountRows : accountRows.filter((a) => visibleAccountIds.has(a.id)),
   };
 }

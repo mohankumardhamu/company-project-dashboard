@@ -1,0 +1,4 @@
+ALTER TABLE "outcomes" ADD COLUMN "search_vector" "tsvector" GENERATED ALWAYS AS (to_tsvector('english'::regconfig, coalesce(title, '') || ' ' || coalesce(narrative, ''))) STORED;--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN "search_vector" "tsvector" GENERATED ALWAYS AS (to_tsvector('english'::regconfig, coalesce(title, '') || ' ' || coalesce(description, ''))) STORED;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "outcomes_search_idx" ON "outcomes" USING gin ("search_vector");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tasks_search_idx" ON "tasks" USING gin ("search_vector");

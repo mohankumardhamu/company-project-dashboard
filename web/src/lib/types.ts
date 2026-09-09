@@ -1,8 +1,10 @@
 export type Role = 'ADMIN' | 'VP' | 'DIRECTOR' | 'PM' | 'ENGINEER';
+export type AccountStatus = 'ACTIVE' | 'INACTIVE';
 export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type WorkLogStatus = 'ON_TRACK' | 'AT_RISK' | 'BLOCKED' | 'COMPLETED';
+export type OutcomeCategory = 'REVENUE_ENABLED' | 'COST_SAVED' | 'RISK_REDUCED' | 'CAPABILITY_BUILT' | 'CUSTOMER_VISIBLE';
 
 export interface AuthUser {
   id: string;
@@ -30,6 +32,47 @@ export interface ProjectRef {
   status?: ProjectStatus;
 }
 
+export interface AccountRef {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export interface AccountSummary {
+  id: string;
+  name: string;
+  code: string;
+  status: AccountStatus;
+  ownerDirectorId: string | null;
+  ownerDirector: PersonRef | null;
+  projectCount: number;
+  teamCount: number;
+  memberCount: number;
+  taskCount: number;
+  canManage: boolean;
+}
+
+export interface AccountDetail {
+  id: string;
+  name: string;
+  code: string;
+  status: AccountStatus;
+  ownerDirectorId: string | null;
+  ownerDirector: PersonRef | null;
+  canManage: boolean;
+  projects: Array<{
+    id: string;
+    name: string;
+    code: string;
+    status: ProjectStatus;
+    director: PersonRef;
+    teamCount: number;
+    memberCount: number;
+    taskCount: number;
+    openTaskCount: number;
+  }>;
+}
+
 export interface ProjectSummary {
   id: string;
   name: string;
@@ -40,6 +83,7 @@ export interface ProjectSummary {
   endDate: string | null;
   directorId: string;
   director: PersonRef;
+  account: AccountRef | null;
   teamCount: number;
   memberCount: number;
   taskCount: number;
@@ -110,6 +154,7 @@ export interface ProjectDetail {
   endDate: string | null;
   directorId: string;
   director: PersonRef;
+  account: AccountRef | null;
   canManage: boolean;
   teams: Array<{
     id: string;
@@ -148,6 +193,47 @@ export interface WorkLogRow {
     status: TaskStatus;
     team: { id: string; name: string; project: ProjectRef | null };
   };
+}
+
+export interface OutcomeSummary {
+  id: string;
+  title: string;
+  landedOn: string;
+  narrative: string;
+  category: OutcomeCategory;
+  teamId: string;
+  team: { id: string; name: string };
+  project: ProjectRef | null;
+  account: AccountRef | null;
+  pmId: string;
+  pm: PersonRef;
+  verifiedById: string | null;
+  verifiedBy: PersonRef | null;
+  verifiedAt: string | null;
+  linkedTasks: Array<{ id: string; title: string }>;
+  canManage: boolean;
+  canVerify: boolean;
+}
+
+export interface DigestPreviewItem {
+  scope: 'team' | 'account';
+  id: string;
+  label: string;
+  totals: {
+    hours: number;
+    entries: number;
+    members: number;
+    membersWithNoEntries: number;
+    tasksDone: number;
+    blockedEntries: number;
+    outcomes: number;
+    outcomesUnverified: number;
+  };
+}
+
+export interface DigestPreview {
+  week: { from: string; to: string };
+  items: DigestPreviewItem[];
 }
 
 export interface Overview {
@@ -208,6 +294,8 @@ export interface WeeklyReport {
     membersWithNoEntries: number;
     tasksDone: number;
     blockedEntries: number;
+    outcomes: number;
+    outcomesUnverified: number;
   };
   members: ReportMemberRow[];
   logs: Array<{
@@ -233,9 +321,82 @@ export interface WeeklyReport {
     hoursThisWeek: number;
     totalLoggedHours: number;
   }>;
+  outcomes: Array<{
+    id: string;
+    landedOn: string;
+    title: string;
+    narrative: string;
+    category: OutcomeCategory;
+    teamName: string;
+    projectName: string;
+    pmName: string;
+    verified: boolean;
+  }>;
+}
+
+export interface RegisterResult {
+  kind: 'outcome' | 'task';
+  id: string;
+  title: string;
+  category: OutcomeCategory | null;
+  date: string;
+  accountId: string | null;
+  accountName: string | null;
+  accountCode: string | null;
+  teamId: string | null;
+  teamName: string;
+  projectId: string | null;
+  projectName: string | null;
+  projectCode: string | null;
+  redacted: boolean;
+  rank: number;
+  narrative?: string | null;
+  personName?: string | null;
+  verified?: boolean | null;
+}
+
+export interface PortfolioRiskItem {
+  type: 'blocked' | 'overdue' | 'silentTeam' | 'staleOutcomes';
+  label: string;
+  teamId?: string;
+  teamName?: string;
+  count?: number;
+}
+
+export interface PortfolioTrend {
+  thisWeek: number;
+  lastWeek: number;
+  delta: number;
+}
+
+export interface PortfolioAccountRow {
+  id: string;
+  name: string;
+  code: string;
+  status: AccountStatus;
+  ownerDirector: PersonRef | null;
+  projectCount: number;
+  teamCount: number;
+  memberCount: number;
+  trend: {
+    outcomes: PortfolioTrend;
+    tasksDone: PortfolioTrend;
+    hours: PortfolioTrend;
+  };
+  risk: {
+    score: number;
+    items: PortfolioRiskItem[];
+  };
+}
+
+export interface Portfolio {
+  week: { from: string; to: string };
+  previousWeek: { from: string; to: string };
+  accounts: PortfolioAccountRow[];
 }
 
 export interface ReportScopes {
   teams: Array<{ id: string; name: string; projectName: string | null }>;
   projects: Array<{ id: string; name: string; code: string }>;
+  accounts: Array<{ id: string; name: string; code: string }>;
 }

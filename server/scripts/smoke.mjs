@@ -128,6 +128,40 @@ const run = async () => {
   const otherDirEdit = await api(dirPlat, 'PATCH', `/projects/${projectId}`, { name: 'Hijacked' });
   check("a Director cannot edit another Director's project", otherDirEdit.status === 403, `got ${otherDirEdit.status}`);
 
+  section('Account — visibility and lifecycle');
+  const acctCode = `SMKACC${Date.now().toString().slice(-6)}`;
+  const newAccount = await api(dirEng, 'POST', '/accounts', { name: 'Smoke Test Account', code: acctCode });
+  check('Director creates an account', newAccount.status === 201, JSON.stringify(newAccount.data).slice(0, 160));
+
+  const pmMakesAccount = await api(pmPay, 'POST', '/accounts', { name: 'Nope', code: 'PMNOPEACC' });
+  check('PM cannot create an account', pmMakesAccount.status === 403, `got ${pmMakesAccount.status}`);
+
+  const seedAccounts = await api(vp, 'GET', '/accounts');
+  const acmeAccount = seedAccounts.data.find((a) => a.code === 'ACME');
+  const globexAccount = seedAccounts.data.find((a) => a.code === 'GLOBEX');
+  check('VP sees the seeded accounts', Boolean(acmeAccount) && Boolean(globexAccount), JSON.stringify(seedAccounts.data?.map((a) => a.code)));
+
+  const engOnGlobex = await api(engAnita, 'GET', `/accounts/${globexAccount.id}`);
+  check(
+    "Engineer gets a 404 (not 403) for an account they have no team on",
+    engOnGlobex.status === 404,
+    `got ${engOnGlobex.status}`
+  );
+
+  const acctReport = await api(vp, 'GET', `/reports/weekly?accountId=${acmeAccount.id}`);
+  check('weekly report scoped to an account returns only that account\'s teams',
+    acctReport.status === 200 &&
+      acctReport.data.members.length > 0 &&
+      acctReport.data.members.every((m) => m.teamName === 'Payments Core' || m.teamName === 'Mobile Checkout'),
+    JSON.stringify(acctReport.data?.members?.map((m) => m.teamName)));
+  check('account-scoped report outcomes also belong to that account\'s teams',
+    acctReport.data.outcomes.length > 0 &&
+      acctReport.data.outcomes.every((o) => o.teamName === 'Payments Core' || o.teamName === 'Mobile Checkout'),
+    JSON.stringify(acctReport.data?.outcomes?.map((o) => o.teamName)));
+
+  const acctAndProjectReport = await api(vp, 'GET', `/reports/weekly?accountId=${acmeAccount.id}&projectId=${projectId}`);
+  check('passing account and project scopes together is rejected', acctAndProjectReport.status === 400, `got ${acctAndProjectReport.status}`);
+
   section('PM — teams and members');
   const pmMakesProject = await api(pmPay, 'POST', '/projects', { name: 'Nope', code: 'PMNOPE' });
   check('PM cannot create a project', pmMakesProject.status === 403, `got ${pmMakesProject.status}`);
@@ -305,6 +339,196 @@ const run = async () => {
     const { writeFileSync } = await import('node:fs');
     writeFileSync('/tmp/smoke-report.xlsx', xlsx.data);
   }
+
+  section('Outcomes — filing, visibility and verification');
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+  const newOutcome = await api(pmPay, 'POST', '/outcomes', {
+    teamId,
+    title: 'Cut settlement latency for the smoke test merchant cohort',
+    category: 'CUSTOMER_VISIBLE',
+    landedOn: todayStr,
+    narrative: 'Smoke test outcome: shipped a fix that measurably improved settlement latency.',
+  });
+  check('PM files an outcome on their own team', newOutcome.status === 201, JSON.stringify(newOutcome.data).slice(0, 160));
+  const outcomeId = newOutcome.data?.id;
+
+  const engFiles = await api(engAnita, 'POST', '/outcomes', {
+    teamId,
+    title: 'Should not work',
+    category: 'REVENUE_ENABLED',
+    landedOn: todayStr,
+    narrative: 'An engineer should never be able to file one of these.',
+  });
+  check('Engineer cannot file an outcome', engFiles.status === 403, `got ${engFiles.status}`);
+
+  const otherPmFiles = await api(pmMob, 'POST', '/outcomes', {
+    teamId,
+    title: 'Should not work either',
+    category: 'REVENUE_ENABLED',
+    landedOn: todayStr,
+    narrative: 'A PM cannot file on a team they do not lead.',
+  });
+  check("a PM cannot file an outcome on another PM's team", otherPmFiles.status === 403, `got ${otherPmFiles.status}`);
+
+  const futureOutcome = await api(pmPay, 'POST', '/outcomes', {
+    teamId,
+    title: 'From the future',
+    category: 'REVENUE_ENABLED',
+    landedOn: tomorrowStr,
+    narrative: 'An outcome cannot land tomorrow — it has not happened yet.',
+  });
+  check('an outcome cannot land in the future', futureOutcome.status === 400, `got ${futureOutcome.status}`);
+
+  const shortNarrative = await api(pmPay, 'POST', '/outcomes', {
+    teamId,
+    title: 'Too terse',
+    category: 'REVENUE_ENABLED',
+    landedOn: todayStr,
+    narrative: 'meh',
+  });
+  check('a narrative that is too short is rejected', shortNarrative.status === 400, `got ${shortNarrative.status}`);
+
+  const engReadsOutcome = await api(engAnita, 'GET', `/outcomes/${outcomeId}`);
+  check(
+    'an Engineer with no team on it 404s reading a specific outcome',
+    engReadsOutcome.status === 404,
+    `got ${engReadsOutcome.status}`
+  );
+
+  const pmEditsOwn = await api(pmPay, 'PATCH', `/outcomes/${outcomeId}`, { title: 'Cut settlement latency, revised' });
+  check('the filing PM can edit their own outcome', pmEditsOwn.status === 200 && pmEditsOwn.data.title.includes('revised'));
+
+  // pmMob has no visibility into pmPay's team at all, so this 404s rather than
+  // 403s — same information-leak-avoiding gate GET /outcomes/:id already uses.
+  const otherPmEdits = await api(pmMob, 'PATCH', `/outcomes/${outcomeId}`, { title: 'Hijacked' });
+  check(
+    "a PM with no visibility into the team 404s trying to edit its outcome",
+    otherPmEdits.status === 404,
+    `got ${otherPmEdits.status}`
+  );
+
+  const pmVerifies = await api(pmPay, 'POST', `/outcomes/${outcomeId}/verify`);
+  check('a PM cannot verify an outcome', pmVerifies.status === 403, `got ${pmVerifies.status}`);
+
+  const wrongDirVerifies = await api(dirPlat, 'POST', `/outcomes/${outcomeId}/verify`);
+  check(
+    "a Director who does not own the outcome's project cannot verify it",
+    wrongDirVerifies.status === 403,
+    `got ${wrongDirVerifies.status}`
+  );
+
+  const rightDirVerifies = await api(dirEng, 'POST', `/outcomes/${outcomeId}/verify`);
+  check(
+    "the Director who owns the outcome's project can verify it",
+    rightDirVerifies.status === 200 && Boolean(rightDirVerifies.data.verifiedAt),
+    JSON.stringify(rightDirVerifies.data).slice(0, 160)
+  );
+
+  section('Portfolio — cross-account leadership view');
+  const pmPortfolio = await api(pmPay, 'GET', '/portfolio');
+  check('PM gets a 403 on /portfolio', pmPortfolio.status === 403, `got ${pmPortfolio.status}`);
+  const engPortfolio = await api(engAnita, 'GET', '/portfolio');
+  check('Engineer gets a 403 on /portfolio', engPortfolio.status === 403, `got ${engPortfolio.status}`);
+
+  const dirPortfolio = await api(dirEng, 'GET', '/portfolio');
+  check('Director can see the portfolio', dirPortfolio.status === 200, `got ${dirPortfolio.status}`);
+
+  const vpPortfolio = await api(vp, 'GET', '/portfolio');
+  check('VP can see the portfolio', vpPortfolio.status === 200, `got ${vpPortfolio.status}`);
+  check(
+    'portfolio covers at least the seeded accounts',
+    vpPortfolio.data.accounts.length >= 2 && vpPortfolio.data.accounts.some((a) => a.code === 'ACME') && vpPortfolio.data.accounts.some((a) => a.code === 'GLOBEX'),
+    JSON.stringify(vpPortfolio.data?.accounts?.map((a) => a.code))
+  );
+  check(
+    'each row carries outcome, task and hours trend',
+    vpPortfolio.data.accounts.every(
+      (a) => 'delta' in a.trend.outcomes && 'delta' in a.trend.tasksDone && 'delta' in a.trend.hours
+    )
+  );
+
+  check(
+    'rows are ranked by risk score, not alphabetically',
+    vpPortfolio.data.accounts.every((a, i, arr) => i === 0 || arr[i - 1].risk.score >= a.risk.score)
+  );
+
+  const flaggedAccount = vpPortfolio.data.accounts.find((a) => a.risk.items.length > 0);
+  check('at least one account is carrying a risk flag', Boolean(flaggedAccount), JSON.stringify(vpPortfolio.data?.accounts?.map((a) => a.risk)));
+  const teamRisk = flaggedAccount?.risk.items.find((i) => i.teamId);
+  if (teamRisk) {
+    const linkedTeam = await api(vp, 'GET', `/teams/${teamRisk.teamId}`);
+    check('a risk item with a teamId links through to a real team', linkedTeam.status === 200 && linkedTeam.data.name === teamRisk.teamName, JSON.stringify(teamRisk));
+  } else {
+    check('a risk item with a teamId links through to a real team', false, 'no team-scoped risk item found to verify');
+  }
+
+  section('Weekly digest preview — the in-app "this week" panel');
+  const engDigest = await api(engAnita, 'GET', '/digest/preview');
+  check('Engineer gets a 403 on the digest preview', engDigest.status === 403, `got ${engDigest.status}`);
+
+  const pmDigest = await api(pmPay, 'GET', '/digest/preview');
+  check(
+    "a PM's digest preview covers the teams they lead",
+    pmDigest.status === 200 && pmDigest.data.items.every((i) => i.scope === 'team') && pmDigest.data.items.some((i) => i.label.includes('Payments Core')),
+    JSON.stringify(pmDigest.data?.items?.map((i) => i.label))
+  );
+
+  const dirDigest = await api(dirEng, 'GET', '/digest/preview');
+  check(
+    "a Director's digest preview covers the account they own, not the other one",
+    dirDigest.status === 200 &&
+      dirDigest.data.items.every((i) => i.scope === 'account') &&
+      dirDigest.data.items.some((i) => i.label.includes('ACME')) &&
+      !dirDigest.data.items.some((i) => i.label.includes('GLOBEX')),
+    JSON.stringify(dirDigest.data?.items?.map((i) => i.label))
+  );
+
+  const vpDigest = await api(vp, 'GET', '/digest/preview');
+  check(
+    "a VP's digest preview covers every account",
+    vpDigest.status === 200 && vpDigest.data.items.some((i) => i.label.includes('ACME')) && vpDigest.data.items.some((i) => i.label.includes('GLOBEX')),
+    JSON.stringify(vpDigest.data?.items?.map((i) => i.label))
+  );
+
+  section('Register — full-text search and redaction');
+  const browseAll = await api(vp, 'GET', '/register');
+  check('browsing with no query returns results across both kinds', browseAll.status === 200 && browseAll.data.results.length > 0, `got ${browseAll.data?.results?.length}`);
+  check(
+    'browsing with no query mixes outcomes and completed tasks',
+    new Set(browseAll.data.results.map((r) => r.kind)).size === 2,
+    JSON.stringify([...new Set(browseAll.data?.results?.map((r) => r.kind))])
+  );
+
+  const categoryFiltered = await api(vp, 'GET', '/register?category=CAPABILITY_BUILT');
+  check(
+    'a category filter excludes completed tasks entirely',
+    categoryFiltered.status === 200 &&
+      categoryFiltered.data.results.length > 0 &&
+      categoryFiltered.data.results.every((r) => r.kind === 'outcome' && r.category === 'CAPABILITY_BUILT'),
+    JSON.stringify(categoryFiltered.data?.results?.map((r) => [r.kind, r.category]))
+  );
+
+  const vpSearch = await api(vp, 'GET', '/register?q=secrets');
+  check('full-text search finds the seeded "secrets" outcome', vpSearch.status === 200 && vpSearch.data.results.some((r) => r.title.includes('secrets')), JSON.stringify(vpSearch.data?.results?.map((r) => r.title)));
+  const vpHit = vpSearch.data.results.find((r) => r.title.includes('secrets'));
+  check("a viewer who can read the team gets the full result, unredacted", vpHit && vpHit.redacted === false && Boolean(vpHit.teamId) && Boolean(vpHit.narrative), JSON.stringify(vpHit));
+
+  // engAnita is on Payments Core (ACME) and has no team on Platform SRE
+  // (GLOBEX) — this is exactly the outcome that lives there.
+  const engSearch = await api(engAnita, 'GET', '/register?q=secrets');
+  check('an Engineer searching for another account\'s outcome gets a 200, not a 404', engSearch.status === 200, `got ${engSearch.status}`);
+  const engHit = engSearch.data?.results?.find((r) => r.title.includes('secrets'));
+  check('the redacted result still names the account, team and date', Boolean(engHit) && engHit.redacted === true && Boolean(engHit.accountName) && Boolean(engHit.teamName) && Boolean(engHit.date), JSON.stringify(engHit));
+  check(
+    'the redacted result hides the team link, the narrative, and who did it',
+    Boolean(engHit) && engHit.teamId === null && engHit.projectId === null && !engHit.narrative && !engHit.personName,
+    JSON.stringify(engHit)
+  );
+
+  const engOwnSearch = await api(engAnita, 'GET', '/register?q=UPI');
+  const engOwnHit = engOwnSearch.data?.results?.find((r) => r.title.includes('UPI'));
+  check("an Engineer searching for their own team's outcome gets the full result", Boolean(engOwnHit) && engOwnHit.redacted === false && Boolean(engOwnHit.teamId), JSON.stringify(engOwnHit));
 
   section('Cleanup');
   await api(dirEng, 'DELETE', `/projects/${projectId}/teams/${teamId}`);

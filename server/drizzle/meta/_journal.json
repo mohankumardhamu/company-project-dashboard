@@ -15,6 +15,27 @@
       "when": 1788271597285,
       "tag": "0001_lethal_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788930949331,
+      "tag": "0002_moaning_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788932281043,
+      "tag": "0003_chief_iron_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788935452759,
+      "tag": "0004_quick_power_pack",
+      "breakpoints": true
     }
   ]
 }

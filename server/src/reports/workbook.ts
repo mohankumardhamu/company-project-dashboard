@@ -100,6 +100,8 @@ export async function buildWeeklyWorkbook(report: WeeklyReport): Promise<Buffer>
     ['People with no entries', report.totals.membersWithNoEntries],
     ['Tasks completed (all time)', report.totals.tasksDone],
     ['Entries flagged blocked', report.totals.blockedEntries],
+    ['Outcomes delivered', report.totals.outcomes],
+    ['Outcomes awaiting verification', report.totals.outcomesUnverified],
   ];
   statRows.forEach(([label, value], i) => {
     const row = summary.getRow(4 + i);
@@ -173,6 +175,23 @@ export async function buildWeeklyWorkbook(report: WeeklyReport): Promise<Buffer>
   ];
   writeTable(tasks, taskCols, report.tasks as unknown as Record<string, unknown>[], 4);
   highlightWhere(tasks, 4, report.tasks.length, taskCols.length, (i) => report.tasks[i].status === 'BLOCKED');
+
+  /* ---------- Sheet 4: Outcomes ---------- */
+  const outcomesSheet = wb.addWorksheet('Outcomes', { properties: { defaultRowHeight: 16 } });
+  titleBlock(outcomesSheet, report, 'Delivered results, not activity', 8);
+  const outcomeCols: Col[] = [
+    { header: 'Date', key: 'landedOn', width: 12 },
+    { header: 'Project', key: 'projectName', width: 24 },
+    { header: 'Team', key: 'teamName', width: 20 },
+    { header: 'Title', key: 'title', width: 34, wrap: true },
+    { header: 'Category', key: 'category', width: 18 },
+    { header: 'PM', key: 'pmName', width: 18 },
+    { header: 'Verified', key: 'verified', width: 10 },
+    { header: 'What happened', key: 'narrative', width: 52, wrap: true },
+  ];
+  writeTable(outcomesSheet, outcomeCols, report.outcomes as unknown as Record<string, unknown>[], 4);
+  // Unverified outcomes are exactly what a Director scanning this sheet should check first.
+  highlightWhere(outcomesSheet, 4, report.outcomes.length, outcomeCols.length, (i) => !report.outcomes[i].verified);
 
   const out = await wb.xlsx.writeBuffer();
   return Buffer.from(out);

@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/Shell';
-import { Card, Empty, ErrorNote, Loading, Modal, ProjectStatusBadge } from '../components/ui';
+import { Badge, Card, Empty, ErrorNote, Loading, Modal, ProjectStatusBadge } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDate } from '../lib/format';
-import type { ProjectSummary } from '../lib/types';
+import type { AccountSummary, ProjectSummary } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 export default function Projects() {
@@ -45,6 +45,7 @@ export default function Projects() {
                     <tr>
                       <th>Project</th>
                       <th>Status</th>
+                      <th>Account</th>
                       <th>Director</th>
                       <th>Dates</th>
                       <th className="num">Teams</th>
@@ -68,6 +69,15 @@ export default function Projects() {
                         </td>
                         <td>
                           <ProjectStatusBadge status={p.status} />
+                        </td>
+                        <td>
+                          {p.account ? (
+                            <Link to={`/accounts/${p.account.id}`}>
+                              {p.account.code} — {p.account.name}
+                            </Link>
+                          ) : (
+                            <Badge tone="warn">No account</Badge>
+                          )}
                         </td>
                         <td className="nowrap">{p.director.name}</td>
                         <td className="nowrap small muted">
@@ -109,9 +119,11 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
     status: 'ACTIVE',
     startDate: '',
     endDate: '',
+    accountId: '',
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { data: accounts } = useApi<AccountSummary[]>('/accounts');
 
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -128,6 +140,7 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
         status: form.status,
         ...(form.startDate ? { startDate: form.startDate } : {}),
         ...(form.endDate ? { endDate: form.endDate } : {}),
+        ...(form.accountId ? { accountId: form.accountId } : {}),
       });
       onCreated();
     } catch (err) {
@@ -167,6 +180,17 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
               <option value="ACTIVE">Active</option>
               <option value="ON_HOLD">On hold</option>
               <option value="COMPLETED">Completed</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="p-account">Account</label>
+            <select id="p-account" value={form.accountId} onChange={set('accountId')}>
+              <option value="">No account yet</option>
+              {(accounts ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
             </select>
           </div>
           <div className="field">

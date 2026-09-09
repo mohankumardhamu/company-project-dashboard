@@ -9,23 +9,36 @@ import {
   ErrorNote,
   Loading,
   Modal,
+  OutcomeCategoryBadge,
   PriorityBadge,
   ProjectStatusBadge,
   Stat,
   TaskStatusBadge,
+  VerifiedBadge,
 } from '../components/ui';
 import { api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDate, isOverdue } from '../lib/format';
-import type { AttachableTeam, ProjectDetail } from '../lib/types';
+import type { AttachableTeam, OutcomeSummary, ProjectDetail } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
   const { data, error, loading, reload } = useApi<ProjectDetail>(id ? `/projects/${id}` : null);
+  const outcomesApi = useApi<OutcomeSummary[]>(id ? `/outcomes?projectId=${id}` : null);
   const [attaching, setAttaching] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  async function verifyOutcome(outcomeId: string) {
+    setActionError(null);
+    try {
+      await api.post(`/outcomes/${outcomeId}/verify`);
+      outcomesApi.reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not verify the outcome');
+    }
+  }
 
   async function detach(teamId: string) {
     setActionError(null);
@@ -69,6 +82,13 @@ export default function ProjectDetailPage() {
           <span className="row" style={{ gap: 8 }}>
             <span className="strong">{data.code}</span>
             <ProjectStatusBadge status={data.status} />
+            {data.account ? (
+              <Link to={`/accounts/${data.account.id}`}>
+                {data.account.code} — {data.account.name}
+              </Link>
+            ) : (
+              <Badge tone="warn">No account</Badge>
+            )}
             <span className="muted">
               Director: {data.director.name} · {formatDate(data.startDate)} → {formatDate(data.endDate)}
             </span>
@@ -199,6 +219,58 @@ export default function ProjectDetailPage() {
                 </div>
               );
             })
+          )}
+        </Card>
+
+        <Card title="Outcomes" hint="Delivered results across every team on this project" flush>
+          {!outcomesApi.data || outcomesApi.data.length === 0 ? (
+            <Empty title="No outcomes filed on this project yet" />
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Title</th>
+                    <th>Team</th>
+                    <th>Category</th>
+                    <th>PM</th>
+                    <th>Status</th>
+                    {can('ADMIN', 'DIRECTOR') && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {outcomesApi.data.map((o) => (
+                    <tr key={o.id}>
+                      <td className="nowrap small">{formatDate(o.landedOn)}</td>
+                      <td>
+                        <div className="stack">
+                          <span className="strong">{o.title}</span>
+                          <span className="muted small">{o.narrative}</span>
+                        </div>
+                      </td>
+                      <td className="nowrap">{o.team.name}</td>
+                      <td>
+                        <OutcomeCategoryBadge category={o.category} />
+                      </td>
+                      <td className="nowrap">{o.pm.name}</td>
+                      <td>
+                        <VerifiedBadge verifiedAt={o.verifiedAt} />
+                      </td>
+                      {can('ADMIN', 'DIRECTOR') && (
+                        <td style={{ textAlign: 'right' }}>
+                          {!o.verifiedAt && o.canVerify && (
+                            <button className="btn sm" onClick={() => verifyOutcome(o.id)}>
+                              Verify
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>

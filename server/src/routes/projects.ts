@@ -21,6 +21,7 @@ const createProjectSchema = z.object({
   status: z.enum(projectStatusEnum.enumValues).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  accountId: z.string().min(1).nullable().optional(),
 });
 
 projectsRouter.post(
@@ -45,11 +46,13 @@ projectsRouter.get(
   '/',
   ah(async (req, res) => {
     const me = currentUser(req);
+    const query = z.object({ accountId: z.string().optional() }).parse(req.query);
     const rows = await db.query.projects.findMany({
-      where: projectScope(me),
+      where: and(projectScope(me), query.accountId ? eq(projects.accountId, query.accountId) : undefined),
       orderBy: [desc(projects.createdAt)],
       with: {
         director: { columns: { id: true, name: true, email: true } },
+        account: { columns: { id: true, name: true, code: true } },
         teams: { columns: { id: true } },
       },
     });
@@ -98,6 +101,7 @@ projectsRouter.get(
       where: eq(projects.id, req.params.id),
       with: {
         director: { columns: { id: true, name: true, email: true } },
+        account: { columns: { id: true, name: true, code: true } },
         teams: {
           // A PM opening a project they contribute to sees only their own teams.
           where: teamScope(me),

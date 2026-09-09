@@ -15,6 +15,9 @@ build/
 npm-debug.log*
 *.log
 
+# Weekly digest file-adapter output
+outbox/
+
 # OS
 .DS_Store
 

@@ -52,7 +52,9 @@ const navLabels = (page) =>
   page.$$eval('.nav a', (els) => els.map((e) => e.textContent.replace(/[^A-Za-z ]/g, '').trim()));
 
 const run = async () => {
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const browser = await chromium.launch({
+    executablePath: process.env.PW_CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  });
   const context = await browser.newContext({ viewport: { width: 1440, height: 950 } });
   const page = await context.newPage();
 
@@ -80,8 +82,8 @@ const run = async () => {
   console.log('\n── VP');
   await login(page, 'vp@acme.com');
   const vpNav = await navLabels(page);
-  check('VP nav has Dashboard/Projects/Teams/Reports/People',
-    ['Dashboard', 'Projects', 'Teams', 'Reports', 'People'].every((l) => vpNav.includes(l)), vpNav.join(','));
+  check('VP nav has Dashboard/Portfolio/Accounts/Projects/Teams/Register/Reports/People',
+    ['Dashboard', 'Portfolio', 'Accounts', 'Projects', 'Teams', 'Register', 'Reports', 'People'].every((l) => vpNav.includes(l)), vpNav.join(','));
   check('VP nav has no My work', !vpNav.includes('My work'), vpNav.join(','));
   await page.waitForSelector('.stat-value');
   const vpStats = await page.$$eval('.stat-value', (els) => els.map((e) => e.textContent.trim()));
@@ -89,7 +91,61 @@ const run = async () => {
   const vpTeamCount = Number(vpStats[1]);
   check('VP dashboard counts projects', vpProjectCount >= 2, vpStats.join('|'));
   check('VP dashboard counts teams', vpTeamCount >= 4, vpStats.join('|'));
+  check('VP dashboard shows the "This week" digest panel', (await page.textContent('body')).includes('This week'));
+  const digestRows = await page.$$('.card:has-text("This week") table tbody tr');
+  check('the digest panel lists every account', digestRows.length >= 2, `got ${digestRows.length}`);
   await page.screenshot({ path: `${SHOTS}/02-vp-dashboard.png`, fullPage: true });
+
+  console.log('\n── Portfolio');
+  await page.click('.nav a:has-text("Portfolio")');
+  const portfolioRows = await waitRows(page, 1);
+  check('portfolio has one row per account', portfolioRows >= 2, `got ${portfolioRows}`);
+  const portfolioAccountOrder = await page.$$eval('table tbody tr td:first-child', (cells) => cells.map((c) => c.textContent));
+  check('portfolio lists ACME and GLOBEX', portfolioAccountOrder.some((c) => c.includes('Acme')) && portfolioAccountOrder.some((c) => c.includes('Globex')), portfolioAccountOrder.join('|'));
+  const portfolioBody = await page.textContent('body');
+  check('portfolio shows outcome and task trend, not just totals', /↑|↓|flat/.test(portfolioBody));
+  check('portfolio does not lead with hours', portfolioBody.indexOf('Outcomes') < portfolioBody.indexOf('Hours'));
+  await page.screenshot({ path: `${SHOTS}/02b-vp-portfolio.png`, fullPage: true });
+
+  // Risk badges are the only links in this table that wrap a .badge — the
+  // account-name link in column one also points at /accounts/:id, so that
+  // prefix alone isn't specific enough to prove a *risk badge* is clickable.
+  const riskLink = await page.$('table tbody a:has(.badge)');
+  if (riskLink) {
+    const href = await riskLink.getAttribute('href');
+    await riskLink.click();
+    await page.waitForLoadState('networkidle');
+    check('a risk badge navigates to the thing it is about', new URL(page.url()).pathname === href, `${page.url()} vs ${href}`);
+    await page.goBack({ waitUntil: 'networkidle' });
+  } else {
+    check('a risk badge navigates to the thing it is about', true, 'no risk flags in seeded data this run — nothing to click');
+  }
+
+  console.log('\n── Register');
+  await page.click('.nav a:has-text("Register")');
+  await page.waitForSelector('#reg-q');
+  await page.fill('#reg-q', 'secrets');
+  await page.waitForLoadState('networkidle');
+  await page.waitForSelector('table tbody tr', { timeout: 15000 });
+  const vpRegisterRows = await page.$$eval('table tbody tr', (rows) => rows.map((r) => r.textContent));
+  check('VP search finds the seeded outcome', vpRegisterRows.some((r) => r.includes('secrets')), vpRegisterRows.join('|'));
+  check('VP (full access) sees a working team link, not a redacted badge', (await page.textContent('table tbody')).includes('Platform SRE') && !(await page.textContent('table tbody')).includes('Redacted'));
+  await page.fill('#reg-q', '');
+  await page.selectOption('#reg-category', 'CAPABILITY_BUILT');
+  // fill() and selectOption() are two separate actions, each triggering its
+  // own fetch — networkidle can resolve on the intermediate state (q
+  // cleared, category not yet applied) rather than the final combination.
+  // Wait for the stale "secrets" row to actually be gone instead of trusting
+  // network timing.
+  await page.waitForFunction(
+    () => !document.querySelector('table tbody')?.textContent.includes('secrets audit finding'),
+    null,
+    { timeout: 15000 }
+  );
+  await page.waitForSelector('table tbody tr', { timeout: 15000 });
+  const categoryRows = await page.$$eval('table tbody tr', (rows) => rows.map((r) => r.textContent));
+  check('category filter shows only that category, no completed tasks', categoryRows.length > 0 && categoryRows.every((r) => r.includes('Capability built')), categoryRows.join('|'));
+  await page.screenshot({ path: `${SHOTS}/02c-vp-register.png`, fullPage: true });
 
   await page.click('.nav a:has-text("Projects")');
   const vpRows = await waitRows(page, 1);
@@ -127,6 +183,8 @@ const run = async () => {
   await page.waitForLoadState('networkidle');
   const codes = await page.$$eval('table tbody tr', (rows) => rows.map((r) => r.textContent));
   check('new project appears in the list', codes.some((c) => c.includes(projectCode)));
+  check('APEX project row shows its account', codes.some((c) => c.includes('APEX') && c.includes('ACME')));
+  check('HELIOS project row shows its account', codes.some((c) => c.includes('HELIOS') && c.includes('GLOBEX')));
 
   await page.click(`table tbody tr:has-text("${projectCode}") a`);
   await page.waitForSelector('.topbar h1');
@@ -146,7 +204,26 @@ const run = async () => {
   check('drill-down lists members', memberBlocks.length >= 6, `got ${memberBlocks.length}`);
   const taskLines = await page.$$('.task-line');
   check('drill-down lists each member\'s tasks', taskLines.length >= 6, `got ${taskLines.length}`);
+  check('project page lists its outcomes', (await page.textContent('body')).includes('Enabled UPI AutoPay'));
   await page.screenshot({ path: `${SHOTS}/05-director-drilldown.png`, fullPage: true });
+
+  console.log('\n── Accounts');
+  await page.click('.nav a:has-text("Accounts")');
+  const acctRows = await waitRows(page, 2);
+  check('Director sees both seeded accounts', acctRows >= 2, `got ${acctRows}`);
+  check('Director sees the "New account" button', (await page.$('button:has-text("New account")')) !== null);
+
+  await page.click('table tbody tr:has-text("ACME") a');
+  await page.waitForSelector('.topbar h1');
+  check('account detail opens', (await page.textContent('.topbar h1')) === 'Acme Payments');
+  await page.waitForSelector('table tbody tr');
+  const acctProjectRows = await page.$$('table tbody tr');
+  check('account detail lists its projects', acctProjectRows.length >= 1, `got ${acctProjectRows.length}`);
+  check('account detail project row is APEX', (await page.textContent('table tbody')).includes('APEX'));
+  check('account page lists its outcomes', (await page.textContent('body')).includes('Enabled UPI AutoPay'));
+  const verifyBtn = await page.$('button:has-text("Verify")');
+  check('account page offers Verify on an unverified outcome', verifyBtn !== null);
+  await page.screenshot({ path: `${SHOTS}/06-director-account.png`, fullPage: true });
 
   /* ------------------------------------------------------------------ PM */
   console.log('\n── PM');
@@ -154,6 +231,7 @@ const run = async () => {
   const pmNav = await navLabels(page);
   check('PM nav has My work and Reports', pmNav.includes('My work') && pmNav.includes('Reports'));
   check('PM nav has no People', !pmNav.includes('People'), pmNav.join(','));
+  check('PM nav has no Portfolio', !pmNav.includes('Portfolio'), pmNav.join(','));
 
   await page.click('.nav a:has-text("Teams")');
   const pmTeamsBefore = await waitRows(page, 1);
@@ -207,6 +285,22 @@ const run = async () => {
   check('team page shows hours per member', /\d+(\.\d+)? h/.test(bodyText));
   await page.screenshot({ path: `${SHOTS}/07-pm-team-detail.png`, fullPage: true });
 
+  console.log('\n── PM logs an outcome');
+  check('PM sees the "Log an outcome" button', (await page.$('button:has-text("Log an outcome")')) !== null);
+  await page.click('button:has-text("Log an outcome")');
+  await page.waitForSelector('.modal');
+  const outcomeTitle = `UI outcome ${Date.now().toString().slice(-6)}`;
+  await page.fill('#o-title', outcomeTitle);
+  await page.selectOption('#o-category', 'CUSTOMER_VISIBLE');
+  await page.fill(
+    '#o-narrative',
+    'Browser check: shipped something real, proving the filing flow works end to end.'
+  );
+  await page.click('.modal button[type="submit"]');
+  await page.waitForSelector('.modal', { state: 'detached', timeout: 15000 });
+  await page.waitForSelector(`text=${outcomeTitle}`, { timeout: 15000 });
+  check('logged outcome appears on the team page', (await page.textContent('body')).includes(outcomeTitle));
+
   console.log('\n── PM report + export');
   await page.click('.nav a:has-text("Reports")');
   await page.waitForSelector('#r-scope');
@@ -236,13 +330,35 @@ const run = async () => {
   /* ------------------------------------------------------------ ENGINEER */
   console.log('\n── Engineer');
   await login(page, 'eng.anita@acme.com');
+  check(
+    'Engineer dashboard has no "This week" digest panel — they never receive one',
+    !(await page.textContent('body')).includes('This week')
+  );
   const engNav = await navLabels(page);
   check('Engineer nav has My work', engNav.includes('My work'));
   check('Engineer nav has no Reports', !engNav.includes('Reports'), engNav.join(','));
   check('Engineer nav has no People', !engNav.includes('People'), engNav.join(','));
+  check('Engineer nav has no Portfolio', !engNav.includes('Portfolio'), engNav.join(','));
+  check('Engineer nav has Register — it is open to every signed-in role', engNav.includes('Register'), engNav.join(','));
+  await page.goto(`${BASE}/portfolio`, { waitUntil: 'networkidle' });
+  check('Engineer is redirected away from /portfolio', new URL(page.url()).pathname === '/');
 
   await page.goto(`${BASE}/reports`, { waitUntil: 'networkidle' });
   check('Engineer is redirected away from /reports', new URL(page.url()).pathname === '/');
+
+  console.log('\n── Register (Engineer, redacted)');
+  await page.click('.nav a:has-text("Register")');
+  await page.waitForSelector('#reg-q');
+  await page.fill('#reg-q', 'secrets');
+  await page.waitForLoadState('networkidle');
+  await page.waitForSelector('table tbody tr', { timeout: 15000 });
+  const engRegisterBody = await page.textContent('table tbody');
+  check('Engineer gets a real page, not a 404, searching another account\'s work', engRegisterBody.includes('secrets audit finding') || engRegisterBody.includes('Redacted'));
+  check('the redacted row shows the account and team name', engRegisterBody.includes('GLOBEX') && engRegisterBody.includes('Platform SRE'));
+  check('the redacted row is marked Redacted and has no team link', engRegisterBody.includes('Redacted'));
+  const redactedTeamLink = await page.$('table tbody tr:has-text("Platform SRE") a[href^="/teams/"]');
+  check('there is no working team link on the redacted row', redactedTeamLink === null);
+  await page.screenshot({ path: `${SHOTS}/10-engineer-register-redacted.png`, fullPage: true });
 
   await page.click('.nav a:has-text("My work")');
   await page.waitForSelector('#w-task');

@@ -3,7 +3,7 @@ import { PageHeader } from '../components/Shell';
 import { Card, Empty, ErrorNote, Loading, Stat, TaskMixBar, TaskMixLegend } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { formatRange, hours } from '../lib/format';
-import type { Overview } from '../lib/types';
+import type { DigestPreview, Overview } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 const BLURB: Record<string, string> = {
@@ -17,6 +17,8 @@ const BLURB: Record<string, string> = {
 export default function Dashboard() {
   const { user } = useAuth();
   const { data, error, loading } = useApi<Overview>('/overview');
+  // Engineers never receive the weekly digest, so there's nothing to preview.
+  const digest = useApi<DigestPreview>(user?.role !== 'ENGINEER' ? '/digest/preview' : null);
 
   return (
     <>
@@ -45,6 +47,46 @@ export default function Dashboard() {
                 foot={`${data.totals.thisWeek.blocked} blocked entries this week`}
               />
             </div>
+
+            {digest.data && digest.data.items.length > 0 && (
+              <Card
+                title="This week"
+                hint={`What the Monday digest sends you · ${formatRange(digest.data.week.from, digest.data.week.to)}`}
+                flush
+              >
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Scope</th>
+                        <th className="num">Outcomes</th>
+                        <th className="num">Tasks done</th>
+                        <th className="num">Blocked</th>
+                        <th className="num">Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {digest.data.items.map((item) => (
+                        <tr key={`${item.scope}:${item.id}`}>
+                          <td>
+                            <Link
+                              to={item.scope === 'team' ? `/teams/${item.id}` : `/accounts/${item.id}`}
+                              className="strong"
+                            >
+                              {item.label}
+                            </Link>
+                          </td>
+                          <td className="num">{item.totals.outcomes}</td>
+                          <td className="num">{item.totals.tasksDone}</td>
+                          <td className="num">{item.totals.blockedEntries}</td>
+                          <td className="num muted">{hours(item.totals.hours)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
 
             <Card
               title="Task mix"

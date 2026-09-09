@@ -14,8 +14,11 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: '◧', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
+  { to: '/portfolio', label: 'Portfolio', icon: '◆', roles: ['ADMIN', 'VP', 'DIRECTOR'] },
+  { to: '/accounts', label: 'Accounts', icon: '⬡', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
   { to: '/projects', label: 'Projects', icon: '▤', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
   { to: '/teams', label: 'Teams', icon: '◇', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
+  { to: '/register', label: 'Register', icon: '⌕', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
   { to: '/my-work', label: 'My work', icon: '✓', roles: ['ENGINEER', 'PM'] },
   { to: '/reports', label: 'Reports', icon: '⇩', roles: ['ADMIN', 'PM', 'DIRECTOR', 'VP'] },
   { to: '/people', label: 'People', icon: '◍', roles: ['ADMIN', 'VP', 'DIRECTOR'] },

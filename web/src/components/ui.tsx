@@ -1,5 +1,13 @@
 import { useEffect, type ReactNode } from 'react';
-import type { ProjectStatus, Role, TaskPriority, TaskStatus, WorkLogStatus } from '../lib/types';
+import type {
+  AccountStatus,
+  OutcomeCategory,
+  ProjectStatus,
+  Role,
+  TaskPriority,
+  TaskStatus,
+  WorkLogStatus,
+} from '../lib/types';
 
 type Tone = 'neutral' | 'brand' | 'ok' | 'warn' | 'danger';
 
@@ -54,6 +62,39 @@ const PROJECT_LABEL: Record<ProjectStatus, string> = {
 export const ProjectStatusBadge = ({ status }: { status: ProjectStatus }) => (
   <Badge tone={PROJECT_TONE[status]}>{PROJECT_LABEL[status]}</Badge>
 );
+
+const ACCOUNT_TONE: Record<AccountStatus, Tone> = {
+  ACTIVE: 'ok',
+  INACTIVE: 'neutral',
+};
+const ACCOUNT_LABEL: Record<AccountStatus, string> = {
+  ACTIVE: 'Active',
+  INACTIVE: 'Inactive',
+};
+export const AccountStatusBadge = ({ status }: { status: AccountStatus }) => (
+  <Badge tone={ACCOUNT_TONE[status]}>{ACCOUNT_LABEL[status]}</Badge>
+);
+
+const OUTCOME_TONE: Record<OutcomeCategory, Tone> = {
+  REVENUE_ENABLED: 'ok',
+  COST_SAVED: 'ok',
+  RISK_REDUCED: 'warn',
+  CAPABILITY_BUILT: 'neutral',
+  CUSTOMER_VISIBLE: 'brand',
+};
+const OUTCOME_LABEL: Record<OutcomeCategory, string> = {
+  REVENUE_ENABLED: 'Revenue enabled',
+  COST_SAVED: 'Cost saved',
+  RISK_REDUCED: 'Risk reduced',
+  CAPABILITY_BUILT: 'Capability built',
+  CUSTOMER_VISIBLE: 'Customer-visible',
+};
+export const OutcomeCategoryBadge = ({ category }: { category: OutcomeCategory }) => (
+  <Badge tone={OUTCOME_TONE[category]}>{OUTCOME_LABEL[category]}</Badge>
+);
+
+export const VerifiedBadge = ({ verifiedAt }: { verifiedAt: string | null }) =>
+  verifiedAt ? <Badge tone="ok">Verified</Badge> : <Badge tone="neutral">Unverified</Badge>;
 
 const LOG_TONE: Record<WorkLogStatus, Tone> = {
   ON_TRACK: 'ok',

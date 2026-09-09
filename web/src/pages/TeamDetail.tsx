@@ -9,15 +9,17 @@ import {
   ErrorNote,
   Loading,
   Modal,
+  OutcomeCategoryBadge,
   PriorityBadge,
   RoleBadge,
   TaskStatusBadge,
+  VerifiedBadge,
   WorkLogStatusBadge,
 } from '../components/ui';
 import { api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDate, hours, isOverdue, startOfWeekString, todayString } from '../lib/format';
-import type { DirectoryUser, TeamDetail, WorkLogRow } from '../lib/types';
+import type { DirectoryUser, OutcomeCategory, OutcomeSummary, TeamDetail, WorkLogRow } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 export default function TeamDetailPage() {
@@ -26,9 +28,11 @@ export default function TeamDetailPage() {
   const { data, error, loading, reload } = useApi<TeamDetail>(id ? `/teams/${id}` : null);
   const weekFrom = startOfWeekString(todayString());
   const { data: logs } = useApi<WorkLogRow[]>(id ? `/worklogs?teamId=${id}&from=${weekFrom}` : null);
+  const outcomesApi = useApi<OutcomeSummary[]>(id ? `/outcomes?teamId=${id}` : null);
 
   const [addingMember, setAddingMember] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
+  const [filingOutcome, setFilingOutcome] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function removeMember(userId: string) {
@@ -93,6 +97,9 @@ export default function TeamDetailPage() {
               <>
                 <button className="btn" onClick={() => setAddingMember(true)}>
                   Add member
+                </button>
+                <button className="btn" onClick={() => setFilingOutcome(true)}>
+                  Log an outcome
                 </button>
                 <button
                   className="btn primary"
@@ -270,6 +277,46 @@ export default function TeamDetailPage() {
             </div>
           )}
         </Card>
+
+        <Card title="Outcomes" hint="What this team has actually delivered — not what it did" flush>
+          {!outcomesApi.data || outcomesApi.data.length === 0 ? (
+            <Empty title="No outcomes filed yet">
+              {data.canManage ? 'Log one once something real has landed.' : 'The PM logs outcomes here.'}
+            </Empty>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outcomesApi.data.map((o) => (
+                    <tr key={o.id}>
+                      <td className="nowrap small">{formatDate(o.landedOn)}</td>
+                      <td>
+                        <div className="stack">
+                          <span className="strong">{o.title}</span>
+                          <span className="muted small">{o.narrative}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <OutcomeCategoryBadge category={o.category} />
+                      </td>
+                      <td>
+                        <VerifiedBadge verifiedAt={o.verifiedAt} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </div>
 
       {addingMember && id && (
@@ -291,6 +338,17 @@ export default function TeamDetailPage() {
           onCreated={() => {
             setAddingTask(false);
             reload();
+          }}
+        />
+      )}
+      {filingOutcome && id && (
+        <NewOutcomeModal
+          teamId={id}
+          tasks={data.tasks.map((t) => ({ id: t.id, title: t.title }))}
+          onClose={() => setFilingOutcome(false)}
+          onCreated={() => {
+            setFilingOutcome(false);
+            outcomesApi.reload();
           }}
         />
       )}
@@ -517,6 +575,141 @@ function NewTaskModal({
           <button type="submit" className="btn primary" disabled={busy || !form.assigneeId}>
             {busy && <span className="spinner" />}
             Create task
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+const OUTCOME_CATEGORIES: Array<{ value: OutcomeCategory; label: string }> = [
+  { value: 'REVENUE_ENABLED', label: 'Revenue enabled' },
+  { value: 'COST_SAVED', label: 'Cost saved' },
+  { value: 'RISK_REDUCED', label: 'Risk reduced' },
+  { value: 'CAPABILITY_BUILT', label: 'Capability built' },
+  { value: 'CUSTOMER_VISIBLE', label: 'Customer-visible' },
+];
+
+function NewOutcomeModal({
+  teamId,
+  tasks,
+  onClose,
+  onCreated,
+}: {
+  teamId: string;
+  tasks: Array<{ id: string; title: string }>;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = useState({
+    title: '',
+    category: 'REVENUE_ENABLED' as OutcomeCategory,
+    landedOn: todayString(),
+    narrative: '',
+  });
+  const [taskIds, setTaskIds] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const toggleTask = (taskId: string) =>
+    setTaskIds((ids) => (ids.includes(taskId) ? ids.filter((id) => id !== taskId) : [...ids, taskId]));
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post('/outcomes', {
+        teamId,
+        title: form.title.trim(),
+        category: form.category,
+        landedOn: form.landedOn,
+        narrative: form.narrative.trim(),
+        ...(taskIds.length ? { taskIds } : {}),
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not log the outcome');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Log an outcome" onClose={onClose}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <ErrorNote message={error} />
+        <p className="hint">
+          A delivered result, not a status update — what did this actually produce?
+        </p>
+        <div className="form-grid">
+          <div className="field span-2">
+            <label htmlFor="o-title">Title</label>
+            <input id="o-title" required minLength={2} value={form.title} onChange={set('title')} />
+          </div>
+          <div className="field">
+            <label htmlFor="o-category">Category</label>
+            <select id="o-category" value={form.category} onChange={set('category')}>
+              {OUTCOME_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="o-date">Landed on</label>
+            <input
+              id="o-date"
+              type="date"
+              max={todayString()}
+              value={form.landedOn}
+              onChange={set('landedOn')}
+              required
+            />
+          </div>
+          <div className="field span-2">
+            <label htmlFor="o-narrative">What happened</label>
+            <textarea
+              id="o-narrative"
+              required
+              minLength={10}
+              value={form.narrative}
+              onChange={set('narrative')}
+              placeholder="Shipped mandate-based UPI AutoPay so merchants can bill recurring subscriptions without a manual retry every cycle."
+            />
+          </div>
+        </div>
+
+        {tasks.length > 0 && (
+          <div className="field">
+            <label>Linked tasks (optional)</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 160, overflowY: 'auto' }}>
+              {tasks.map((t) => (
+                <label key={t.id} className="row" style={{ gap: 8, fontWeight: 400 }}>
+                  <input
+                    type="checkbox"
+                    checked={taskIds.includes(t.id)}
+                    onChange={() => toggleTask(t.id)}
+                  />
+                  <span className="small">{t.title}</span>
+                </label>
+              ))}
+            </div>
+            <span className="hint">Cite the work this traces back to, if it's a clean fit — never required.</span>
+          </div>
+        )}
+
+        <div className="form-actions">
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn primary" disabled={busy}>
+            {busy && <span className="spinner" />}
+            Log outcome
           </button>
         </div>
       </form>

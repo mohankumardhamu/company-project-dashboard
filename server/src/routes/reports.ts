@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, currentUser, requireRole } from '../auth';
 import { ah } from '../http';
-import { buildWeeklyReport, reportScopeOptions } from '../reports/weekly';
+import { buildWeeklyReport, reportScopeOptions, weeklyReportFilename } from '../reports/weekly';
 import { buildWeeklyWorkbook } from '../reports/workbook';
 
 export const reportsRouter = Router();
@@ -11,6 +11,7 @@ reportsRouter.use(authenticate);
 reportsRouter.use(requireRole('ADMIN', 'PM', 'DIRECTOR', 'VP'));
 
 const querySchema = z.object({
+  accountId: z.string().optional(),
   projectId: z.string().optional(),
   teamId: z.string().optional(),
   week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').optional(),
@@ -37,8 +38,7 @@ reportsRouter.get(
   ah(async (req, res) => {
     const report = await buildWeeklyReport(currentUser(req), querySchema.parse(req.query));
     const buffer = await buildWeeklyWorkbook(report);
-    const safeSlug = report.slug.replace(/[^A-Za-z0-9-_]+/g, '-').replace(/^-|-$/g, '') || 'report';
-    const filename = `weekly-status_${safeSlug}_${report.from}_to_${report.to}.xlsx`;
+    const filename = weeklyReportFilename(report);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

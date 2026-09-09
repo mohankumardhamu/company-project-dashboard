@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import { PageHeader } from '../components/Shell';
-import { Badge, Card, Empty, ErrorNote, Loading, Stat } from '../components/ui';
+import { Badge, Card, Empty, ErrorNote, Loading, OutcomeCategoryBadge, Stat } from '../components/ui';
 import { downloadFile } from '../lib/api';
 import { addDaysString, formatDate, formatRange, hours, startOfWeekString, todayString } from '../lib/format';
 import type { ReportScopes, WeeklyReport } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
-type ScopeChoice = { kind: 'all' } | { kind: 'project'; id: string } | { kind: 'team'; id: string };
+type ScopeChoice =
+  | { kind: 'all' }
+  | { kind: 'account'; id: string }
+  | { kind: 'project'; id: string }
+  | { kind: 'team'; id: string };
 
 function scopeToQuery(scope: ScopeChoice, week: string): string {
   const params = new URLSearchParams({ week });
+  if (scope.kind === 'account') params.set('accountId', scope.id);
   if (scope.kind === 'project') params.set('projectId', scope.id);
   if (scope.kind === 'team') params.set('teamId', scope.id);
   return params.toString();
@@ -26,9 +31,11 @@ export default function Reports() {
   const scope: ScopeChoice =
     scopeValue === 'all'
       ? { kind: 'all' }
-      : scopeValue.startsWith('project:')
-        ? { kind: 'project', id: scopeValue.slice(8) }
-        : { kind: 'team', id: scopeValue.slice(5) };
+      : scopeValue.startsWith('account:')
+        ? { kind: 'account', id: scopeValue.slice(8) }
+        : scopeValue.startsWith('project:')
+          ? { kind: 'project', id: scopeValue.slice(8) }
+          : { kind: 'team', id: scopeValue.slice(5) };
 
   const query = scopeToQuery(scope, week);
   const report = useApi<WeeklyReport>(`/reports/weekly?${query}`, [query]);
@@ -67,6 +74,15 @@ export default function Reports() {
               <label htmlFor="r-scope">Scope</label>
               <select id="r-scope" value={scopeValue} onChange={(e) => setScopeValue(e.target.value)}>
                 <option value="all">Everything I can see</option>
+                {(scopes.data?.accounts.length ?? 0) > 0 && (
+                  <optgroup label="Accounts">
+                    {scopes.data?.accounts.map((a) => (
+                      <option key={a.id} value={`account:${a.id}`}>
+                        {a.code} — {a.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
                 {(scopes.data?.projects.length ?? 0) > 0 && (
                   <optgroup label="Projects">
                     {scopes.data?.projects.map((p) => (
@@ -135,6 +151,11 @@ export default function Reports() {
                 foot={`${report.data.totals.membersWithNoEntries} logged nothing`}
               />
               <Stat label="Blocked entries" value={report.data.totals.blockedEntries} />
+              <Stat
+                label="Outcomes"
+                value={report.data.totals.outcomes}
+                foot={`${report.data.totals.outcomesUnverified} unverified`}
+              />
             </div>
 
             <Card title="Per member" hint="Sheet 1 of the workbook" flush>
@@ -227,6 +248,57 @@ export default function Reports() {
                                 </span>
                               )}
                             </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            <Card
+              title="Outcomes"
+              hint={`Sheet 4 of the workbook · ${report.data.outcomes.length} rows`}
+              flush
+            >
+              {report.data.outcomes.length === 0 ? (
+                <Empty title="Nothing landed in this window" />
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Title</th>
+                        <th>Team / project</th>
+                        <th>Category</th>
+                        <th>PM</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.data.outcomes.map((o) => (
+                        <tr key={o.id}>
+                          <td className="nowrap small">{formatDate(o.landedOn)}</td>
+                          <td>
+                            <div className="stack">
+                              <span className="strong">{o.title}</span>
+                              <span className="muted small">{o.narrative}</span>
+                            </div>
+                          </td>
+                          <td className="small">
+                            <div className="stack">
+                              <span>{o.teamName}</span>
+                              <span className="muted">{o.projectName}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <OutcomeCategoryBadge category={o.category} />
+                          </td>
+                          <td className="nowrap">{o.pmName}</td>
+                          <td>
+                            {o.verified ? <Badge tone="ok">Verified</Badge> : <Badge tone="neutral">Unverified</Badge>}
                           </td>
                         </tr>
                       ))}
