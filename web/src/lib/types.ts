@@ -232,19 +232,19 @@ export interface DigestPreviewItem {
 }
 
 export interface DigestPreview {
-  week: { from: string; to: string };
+  period: { from: string; to: string };
   items: DigestPreviewItem[];
 }
 
 export interface Overview {
   scope: Role;
-  week: { from: string; to: string };
+  period: { from: string; to: string };
   totals: {
     projects: number;
     teams: number;
     members: number;
     tasks: { total: number; todo: number; inProgress: number; blocked: number; done: number };
-    thisWeek: { hours: number; entries: number; contributors: number; blocked: number };
+    thisPeriod: { hours: number; entries: number; contributors: number; blocked: number };
   };
   projects: Array<{
     id: string;
@@ -278,7 +278,7 @@ export interface ReportMemberRow {
   blockedEntries: number;
 }
 
-export interface WeeklyReport {
+export interface PeriodReport {
   slug: string;
   title: string;
   scopeLabel: string;
@@ -318,7 +318,7 @@ export interface WeeklyReport {
     status: string;
     priority: string;
     dueDate: string;
-    hoursThisWeek: number;
+    hoursThisPeriod: number;
     totalLoggedHours: number;
   }>;
   outcomes: Array<{
@@ -364,8 +364,8 @@ export interface PortfolioRiskItem {
 }
 
 export interface PortfolioTrend {
-  thisWeek: number;
-  lastWeek: number;
+  thisPeriod: number;
+  lastPeriod: number;
   delta: number;
 }
 
@@ -390,8 +390,8 @@ export interface PortfolioAccountRow {
 }
 
 export interface Portfolio {
-  week: { from: string; to: string };
-  previousWeek: { from: string; to: string };
+  period: { from: string; to: string };
+  previousPeriod: { from: string; to: string };
   accounts: PortfolioAccountRow[];
 }
 
@@ -399,4 +399,147 @@ export interface ReportScopes {
   teams: Array<{ id: string; name: string; projectName: string | null }>;
   projects: Array<{ id: string; name: string; code: string }>;
   accounts: Array<{ id: string; name: string; code: string }>;
+}
+
+/* ------------------------------ imports ------------------------------ */
+
+export type ImportAction = 'create' | 'update' | 'skip';
+
+export interface RallyPlanRow {
+  rowNumber: number;
+  workProduct: string;
+  release: string;
+  state: string;
+  estimate: number;
+  todo: number;
+  timeSpent: number;
+  owner: string;
+  userId: string | null;
+  userName: string | null;
+  action: ImportAction;
+  reason?: string;
+}
+
+export interface KekaPlanRow {
+  rowNumber: number;
+  employeeNumber: string;
+  displayName: string;
+  jobTitle: string;
+  department: string;
+  location: string;
+  reporteesCount: number;
+  userId: string | null;
+  userName: string | null;
+  action: ImportAction;
+  reason?: string;
+}
+
+interface PlanBase {
+  fileName: string;
+  totalRows: number;
+  toCreate: number;
+  toUpdate: number;
+  skipped: number;
+  committed: boolean;
+  batchId?: string;
+}
+
+export interface RallyPlan extends PlanBase {
+  source: 'RALLY';
+  period: { from: string; to: string };
+  rows: RallyPlanRow[];
+}
+
+export interface KekaPlan extends PlanBase {
+  source: 'KEKA';
+  linked: number;
+  rows: KekaPlanRow[];
+}
+
+export interface ImportBatch {
+  id: string;
+  source: 'RALLY' | 'KEKA';
+  fileName: string;
+  periodStart: string | null;
+  totalRows: number;
+  importedRows: number;
+  skippedRows: number;
+  createdAt: string;
+  uploadedBy: string;
+}
+
+export interface ImportStatus {
+  currentPeriod: { from: string; to: string };
+  rally: {
+    lastImport: ImportBatch | null;
+    people: number;
+    withDataCurrent: number;
+    withDataPrevious: number;
+  };
+  keka: {
+    lastImport: ImportBatch | null;
+    employees: number;
+    linked: number;
+    loginsWithoutRecord: number;
+  } | null;
+  coverage: {
+    periods: Array<{ from: string; to: string }>;
+    people: Array<{ id: string; name: string; role: Role; has: boolean[] }>;
+  };
+  recent: ImportBatch[];
+}
+
+export interface KekaEmployeeRow {
+  id: string;
+  employeeNumber: string;
+  displayName: string;
+  jobTitle: string | null;
+  department: string | null;
+  location: string | null;
+  reporteesCount: number;
+  userId: string | null;
+  userEmail: string | null;
+  updatedAt: string;
+}
+
+/* ---------------------------- productivity ---------------------------- */
+
+export interface ProductivityMetrics {
+  storyPoints: number;
+  storiesCompleted: number;
+  storiesTotal: number;
+  pointsPlanned: number;
+  timeSpent: number;
+  todo: number;
+}
+
+export interface Productivity {
+  period: { from: string; to: string };
+  periods: Array<{ from: string; to: string }>;
+  doneStates: string[];
+  totals: ProductivityMetrics;
+  trend: Array<{ from: string; to: string } & ProductivityMetrics>;
+  people: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: Role;
+    employeeNumber: string | null;
+    jobTitle: string | null;
+    department: string | null;
+    hasData: boolean;
+    current: ProductivityMetrics;
+    trend: Array<{ from: string } & ProductivityMetrics>;
+  }>;
+  items: Array<{
+    id: string;
+    userId: string;
+    workProduct: string;
+    release: string | null;
+    state: string;
+    done: boolean;
+    estimate: number;
+    timeSpent: number;
+    todo: number;
+  }>;
 }

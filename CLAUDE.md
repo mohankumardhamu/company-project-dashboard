@@ -15,7 +15,7 @@ model exists to support:
    Director has claimed it.
 3. The PM creates **Tasks** on their team and assigns each to a team member.
 4. **Engineers** log daily status (a **WorkLog**) against tasks assigned to them.
-5. The PM or Director exports the week as an `.xlsx` workbook (`GET /api/reports/weekly.xlsx`).
+5. The PM or Director exports a bi-weekly period as an `.xlsx` workbook (`GET /api/reports/biweekly.xlsx`).
    Admin and VP can also export, scoped to whatever they can read.
 
 Admin is the bootstrap superuser (unrestricted, onboards anyone including other Admins). VP is
@@ -35,18 +35,25 @@ server/src/
   scope.ts             ALL read/write visibility rules — see below
   http.ts              HttpError + status helpers, ah() async wrapper, errorHandler (incl. zod
                         and Postgres unique/FK violation translation)
-  dates.ts             date-only ('YYYY-MM-DD') helpers, ISO week math
+  dates.ts             date-only ('YYYY-MM-DD') helpers, bi-weekly period math (BIWEEK_ANCHOR)
   db/
     schema.ts           Drizzle tables, enums, relations — the source of truth for the data model
-    seed.ts              deterministic demo org (2 projects, 4 teams, ~16 users, 3 weeks of logs)
+    seed.ts              deterministic demo org (2 projects, 4 teams, ~16 users, 5 weeks of logs, 4 periods of Rally data,
+                          a Keka directory)
     migrate.ts           applies ./drizzle SQL migrations
     index.ts             db/pool singletons
     id.ts                createId() — short sortable id generator used as every PK default
-  routes/              auth, users, projects, teams, tasks, worklogs, reports, overview — one
+  routes/              auth, users, projects, teams, tasks, worklogs, reports, overview,
+                        imports, productivity (+ /api/periods) — one
                         router per resource, each does authenticate + zod parse + scope.ts checks
   reports/
-    weekly.ts            builds the scoped report data model (buildWeeklyReport)
-    workbook.ts           renders a WeeklyReport to an .xlsx Buffer with ExcelJS
+    biweekly.ts          builds the scoped report data model (buildPeriodReport)
+    workbook.ts           renders a PeriodReport to an .xlsx Buffer with ExcelJS
+    productivity.ts      per-person Rally metrics, data-availability status, import history
+  imports/
+    tabular.ts           .xlsx/.csv → header-keyed rows (loose header matching)
+    people.ts            matches a free-text name/email to a login
+    rally.ts / keka.ts   plan (preview, no writes) + commit (upsert) per source
 drizzle/               generated SQL migrations (via db:generate)
 scripts/smoke.mjs      API + permission test suite, runs against a live server
 web/src/
@@ -57,9 +64,11 @@ web/src/
     types.ts              TS types mirroring the API response shapes
     useApi.ts             data-fetching hook used by pages
     format.ts             display formatting helpers
-  components/            Shell (nav/layout), ui.tsx (badges, cards, modal, stat tiles)
+    periods.ts            usePeriods() — the server's bi-weekly calendar (/api/periods)
+  components/            Shell (nav/layout), ui.tsx (badges, cards, modal, stat tiles),
+                          charts.tsx (single-series HTML bar charts with hover tooltips)
   pages/                  Login, Dashboard, Projects, ProjectDetail, Teams, TeamDetail, MyWork,
-                          Reports, People — one per route
+                          Reports, People, Imports, Productivity, … — one per route
 scripts/uicheck.mjs     Playwright browser test suite, drives all four main roles
 ```
 
@@ -74,6 +83,11 @@ reimplement the checks inline. It exports:
 - `canReadTeam(user, teamId)` / `canReadProject(user, projectId)` — single-record read checks.
 - `canManageTeam(user, teamId)` — true for Admin, or the PM who leads that team.
 - `canManageProject(user, projectId)` — true for Admin, or the Director who owns that project.
+- `visibleUserIds(user)` / `userScope(user)` — whose per-person data (Rally productivity) the user
+  may read: Admin/VP/Director everyone, PM self + members of teams they lead, Engineer self.
+- `importableUserIds(user)` — whose Rally rows the user may import: Admin anyone, Director people on
+  their projects' teams, PM their teams' members, Engineer self, VP nobody (read-only).
+- `canImportOrgDirectory(user)` — Keka directory import: Admin or VP.
 
 Visibility rule of thumb baked into these functions: Admin/VP see everything; Director sees every
 project and every team (including unattached ones, so they can attach them); PM sees teams they
@@ -101,8 +115,8 @@ Both suites run against **a live server and a freshly seeded database**, and bot
 
 ```bash
 cd server && npm run seed              # reset to known state
-node scripts/smoke.mjs                 # 68 API + permission checks
-cd ../web && node scripts/uicheck.mjs  # 54 browser checks (needs API + web dev servers up)
+node scripts/smoke.mjs                 # 144 API + permission checks
+cd ../web && node scripts/uicheck.mjs  # 92 browser checks (needs API + web dev servers up)
 ```
 
 `smoke.mjs` hits the API directly: auth, every role boundary (including cross-tenant attempts —
@@ -120,9 +134,18 @@ both suites assert on specific seeded counts (e.g. "VP sees both projects").
   `routes/*.ts` handler), not deeper in the call stack. `ZodError` is caught centrally by
   `errorHandler` in `http.ts` and turned into a 400 with per-field messages.
 - **Dates**: `date` columns round-trip as plain `'YYYY-MM-DD'` strings with no timezone. Always go
-  through `server/src/dates.ts` (`toDateOnly`, `today`, `startOfWeek`/`endOfWeek`, `addDays`,
-  `humanDate`) rather than constructing `Date` objects or formatting ad hoc — the week used
-  throughout (overview, reports) always runs Monday–Sunday.
+  through `server/src/dates.ts` (`toDateOnly`, `today`, `startOfPeriod`/`endOfPeriod`,
+  `recentPeriods`, `addDays`, `humanDate`) rather than constructing `Date` objects or formatting ad
+  hoc. **The reporting period is bi-weekly**, not weekly: fortnights (Monday → second Sunday)
+  counted from `env.biweekAnchor` (`BIWEEK_ANCHOR`, default `2026-01-05`). Overview, reports,
+  portfolio trend, digest, imports and productivity all use it; the web gets it from
+  `/api/periods` rather than computing boundaries itself.
+- **Imports**: Rally/Keka uploads are raw file bytes (`application/octet-stream`, file name in
+  the query) to `POST /api/imports/{rally,keka}`. Without `commit=true` it is a preview that
+  writes nothing; every skipped row carries a reason. `rally_items` is unique on
+  `(userId, periodStart, workProduct)` and `keka_employees` on `employeeNumber`, both upserted —
+  re-uploading the same sheet must update, never double-count. Story points = Estimate on
+  `Completed`/`Accepted` rows; effort = Time Spent.
 - **WorkLog uniqueness**: `work_logs` has a unique index on `(taskId, userId, date)`
   (`work_logs_task_user_date_key`). The create endpoint (`POST /api/worklogs`) uses
   `onConflictDoUpdate` on that key, so re-submitting the same person/task/day updates the existing

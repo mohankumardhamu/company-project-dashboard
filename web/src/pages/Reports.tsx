@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { PageHeader } from '../components/Shell';
 import { Badge, Card, Empty, ErrorNote, Loading, OutcomeCategoryBadge, Stat } from '../components/ui';
 import { downloadFile } from '../lib/api';
-import { addDaysString, formatDate, formatRange, hours, startOfWeekString, todayString } from '../lib/format';
-import type { ReportScopes, WeeklyReport } from '../lib/types';
+import { formatDate, formatRange, hours } from '../lib/format';
+import { periodLabel, usePeriods } from '../lib/periods';
+import type { ReportScopes, PeriodReport } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 type ScopeChoice =
@@ -12,8 +13,8 @@ type ScopeChoice =
   | { kind: 'project'; id: string }
   | { kind: 'team'; id: string };
 
-function scopeToQuery(scope: ScopeChoice, week: string): string {
-  const params = new URLSearchParams({ week });
+function scopeToQuery(scope: ScopeChoice, period: string): string {
+  const params = new URLSearchParams({ period });
   if (scope.kind === 'account') params.set('accountId', scope.id);
   if (scope.kind === 'project') params.set('projectId', scope.id);
   if (scope.kind === 'team') params.set('teamId', scope.id);
@@ -21,7 +22,9 @@ function scopeToQuery(scope: ScopeChoice, week: string): string {
 }
 
 export default function Reports() {
-  const [week, setWeek] = useState(startOfWeekString(todayString()));
+  const periods = usePeriods(26);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const period = chosen ?? periods.data?.current.from ?? null;
   const [scopeValue, setScopeValue] = useState('all');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -37,14 +40,14 @@ export default function Reports() {
           ? { kind: 'project', id: scopeValue.slice(8) }
           : { kind: 'team', id: scopeValue.slice(5) };
 
-  const query = scopeToQuery(scope, week);
-  const report = useApi<WeeklyReport>(`/reports/weekly?${query}`, [query]);
+  const query = period ? scopeToQuery(scope, period) : null;
+  const report = useApi<PeriodReport>(query ? `/reports/biweekly?${query}` : null, [query]);
 
   async function download() {
     setDownloading(true);
     setDownloadError(null);
     try {
-      await downloadFile(`/reports/weekly.xlsx?${query}`, 'weekly-report.xlsx');
+      await downloadFile(`/reports/biweekly.xlsx?${query}`, 'biweekly-report.xlsx');
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : 'Download failed');
     } finally {
@@ -55,8 +58,8 @@ export default function Reports() {
   return (
     <>
       <PageHeader
-        title="Weekly report"
-        subtitle="Preview a week, then export it as an Excel workbook to send on."
+        title="Bi-weekly report"
+        subtitle="Preview a two-week period, then export it as an Excel workbook to send on."
         actions={
           <button className="btn primary" onClick={download} disabled={downloading || !report.data}>
             {downloading && <span className="spinner" />}
@@ -66,7 +69,7 @@ export default function Reports() {
       />
 
       <div className="content">
-        <ErrorNote message={scopes.error ?? report.error ?? downloadError} />
+        <ErrorNote message={periods.error ?? scopes.error ?? report.error ?? downloadError} />
 
         <Card title="What to report on">
           <div className="form-grid">
@@ -105,27 +108,41 @@ export default function Reports() {
               </select>
             </div>
             <div className="field">
-              <label htmlFor="r-week">Week (any day in it)</label>
-              <input
-                id="r-week"
-                type="date"
-                value={week}
-                onChange={(e) => setWeek(startOfWeekString(e.target.value || todayString()))}
-              />
+              <label htmlFor="r-period">Bi-weekly period</label>
+              <select id="r-period" value={period ?? ''} onChange={(e) => setChosen(e.target.value)}>
+                {periods.data?.periods.map((p) => (
+                  <option key={p.from} value={p.from}>
+                    {periodLabel(p)}
+                    {p.from === periods.data?.current.from ? ' (current)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="field">
               <label>Jump</label>
               <div className="row">
-                <button className="btn sm" onClick={() => setWeek(addDaysString(week, -7))}>
+                <button
+                  className="btn sm"
+                  onClick={() => {
+                    const list = periods.data?.periods ?? [];
+                    const i = list.findIndex((p) => p.from === period);
+                    if (i >= 0 && i < list.length - 1) setChosen(list[i + 1].from);
+                  }}
+                  disabled={!periods.data || periods.data.periods[periods.data.periods.length - 1]?.from === period}
+                >
                   ← Previous
                 </button>
-                <button className="btn sm" onClick={() => setWeek(startOfWeekString(todayString()))}>
-                  This week
+                <button className="btn sm" onClick={() => setChosen(null)}>
+                  This period
                 </button>
                 <button
                   className="btn sm"
-                  onClick={() => setWeek(addDaysString(week, 7))}
-                  disabled={addDaysString(week, 7) > todayString()}
+                  onClick={() => {
+                    const list = periods.data?.periods ?? [];
+                    const i = list.findIndex((p) => p.from === period);
+                    if (i > 0) setChosen(list[i - 1].from);
+                  }}
+                  disabled={!periods.data || periods.data.current.from === period}
                 >
                   Next →
                 </button>
@@ -160,7 +177,7 @@ export default function Reports() {
 
             <Card title="Per member" hint="Sheet 1 of the workbook" flush>
               {report.data.members.length === 0 ? (
-                <Empty title="Nobody in scope for this week" />
+                <Empty title="Nobody in scope for this period" />
               ) : (
                 <div className="table-wrap">
                   <table>
@@ -208,7 +225,7 @@ export default function Reports() {
               flush
             >
               {report.data.logs.length === 0 ? (
-                <Empty title="No entries logged in this week" />
+                <Empty title="No entries logged in this period" />
               ) : (
                 <div className="table-wrap">
                   <table>

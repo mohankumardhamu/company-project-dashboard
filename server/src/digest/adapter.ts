@@ -9,7 +9,7 @@ export interface DigestMessage {
   subject: string;
   filename: string;
   workbook: Buffer;
-  week: { from: DateString; to: DateString };
+  period: { from: DateString; to: DateString };
 }
 
 export interface DigestAdapter {

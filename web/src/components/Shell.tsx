@@ -20,6 +20,8 @@ const NAV: NavItem[] = [
   { to: '/teams', label: 'Teams', icon: '◇', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
   { to: '/register', label: 'Register', icon: '⌕', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
   { to: '/my-work', label: 'My work', icon: '✓', roles: ['ENGINEER', 'PM'] },
+  { to: '/productivity', label: 'Productivity', icon: '▮', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
+  { to: '/imports', label: 'Imports', icon: '⇪', roles: ['ADMIN', 'VP', 'DIRECTOR', 'PM', 'ENGINEER'] },
   { to: '/reports', label: 'Reports', icon: '⇩', roles: ['ADMIN', 'PM', 'DIRECTOR', 'VP'] },
   { to: '/people', label: 'People', icon: '◍', roles: ['ADMIN', 'VP', 'DIRECTOR'] },
 ];

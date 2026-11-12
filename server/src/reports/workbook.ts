@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import type { WeeklyReport } from './weekly';
+import type { PeriodReport } from './biweekly';
 
 const INK = 'FF1F2937';
 const HEADER_BG = 'FF1F2937';
@@ -11,7 +11,7 @@ const WARN_FG = 'FF991B1B';
 
 type Col = { header: string; key: string; width: number; numFmt?: string; wrap?: boolean };
 
-function titleBlock(sheet: ExcelJS.Worksheet, report: WeeklyReport, subtitle: string, span: number) {
+function titleBlock(sheet: ExcelJS.Worksheet, report: PeriodReport, subtitle: string, span: number) {
   sheet.mergeCells(1, 1, 1, span);
   const title = sheet.getCell(1, 1);
   title.value = `${report.title} — ${report.from} to ${report.to}`;
@@ -84,7 +84,7 @@ function highlightWhere(
   }
 }
 
-export async function buildWeeklyWorkbook(report: WeeklyReport): Promise<Buffer> {
+export async function buildPeriodWorkbook(report: PeriodReport): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Project Dashboard';
   wb.created = new Date();
@@ -127,7 +127,7 @@ export async function buildWeeklyWorkbook(report: WeeklyReport): Promise<Buffer>
   ];
   const memberHeaderRow = 4 + statRows.length + 1;
   writeTable(summary, memberCols, report.members as unknown as Record<string, unknown>[], memberHeaderRow);
-  // Anyone who logged nothing all week is what the PM is scanning for.
+  // Anyone who logged nothing all period is what the PM is scanning for.
   highlightWhere(summary, memberHeaderRow, report.members.length, memberCols.length, (i) => report.members[i].entries === 0);
 
   if (report.members.length > 0) {
@@ -143,7 +143,7 @@ export async function buildWeeklyWorkbook(report: WeeklyReport): Promise<Buffer>
 
   /* ---------- Sheet 2: Daily log ---------- */
   const daily = wb.addWorksheet('Daily Log', { properties: { defaultRowHeight: 16 } });
-  titleBlock(daily, report, 'Every status entry in the week', 10);
+  titleBlock(daily, report, 'Every status entry in the period', 10);
   const logCols: Col[] = [
     { header: 'Date', key: 'date', width: 12 },
     { header: 'Project', key: 'projectName', width: 24 },
@@ -170,7 +170,7 @@ export async function buildWeeklyWorkbook(report: WeeklyReport): Promise<Buffer>
     { header: 'Status', key: 'status', width: 13 },
     { header: 'Priority', key: 'priority', width: 11 },
     { header: 'Due', key: 'dueDate', width: 12 },
-    { header: 'Hours this week', key: 'hoursThisWeek', width: 16, numFmt: '0.00' },
+    { header: 'Hours this period', key: 'hoursThisPeriod', width: 16, numFmt: '0.00' },
     { header: 'Hours total', key: 'totalLoggedHours', width: 13, numFmt: '0.00' },
   ];
   writeTable(tasks, taskCols, report.tasks as unknown as Record<string, unknown>[], 4);

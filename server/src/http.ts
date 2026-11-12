@@ -38,6 +38,8 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
       teams_pm_name_key: 'You already lead a team with that name',
       team_members_team_user_key: 'That person is already on this team',
       work_logs_task_user_date_key: 'You already logged work on that task for that date',
+      rally_items_user_period_item_key: 'That work product is already imported for this person and period',
+      keka_employees_employee_number_key: 'An employee with that Employee Number is already imported',
     };
     return res
       .status(409)

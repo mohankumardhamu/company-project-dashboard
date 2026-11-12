@@ -5,6 +5,7 @@ import {
   date,
   doublePrecision,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -35,6 +36,8 @@ export const outcomeCategoryEnum = pgEnum('outcome_category', [
   'CUSTOMER_VISIBLE',
 ]);
 
+export const importSourceEnum = pgEnum('import_source', ['RALLY', 'KEKA']);
+
 export type Role = (typeof roleEnum.enumValues)[number];
 export type AccountStatus = (typeof accountStatusEnum.enumValues)[number];
 export type ProjectStatus = (typeof projectStatusEnum.enumValues)[number];
@@ -42,6 +45,7 @@ export type TaskStatus = (typeof taskStatusEnum.enumValues)[number];
 export type TaskPriority = (typeof taskPriorityEnum.enumValues)[number];
 export type WorkLogStatus = (typeof workLogStatusEnum.enumValues)[number];
 export type OutcomeCategory = (typeof outcomeCategoryEnum.enumValues)[number];
+export type ImportSource = (typeof importSourceEnum.enumValues)[number];
 
 const id = () =>
   varchar('id', { length: 30 })
@@ -268,6 +272,90 @@ export const outcomeTasks = pgTable(
   })
 );
 
+/* -------------------------------- imports -------------------------------- *
+ * Rally and Keka data arrives as uploaded spreadsheets rather than being typed
+ * in, so nothing gets missed. Each upload is an import_batches row; the rows it
+ * produced point back at it.
+ */
+
+export const importBatches = pgTable(
+  'import_batches',
+  {
+    id: id(),
+    source: importSourceEnum('source').notNull(),
+    fileName: varchar('file_name', { length: 255 }).notNull(),
+    // Rally only: the bi-weekly period (its first Monday) the uploader said the sheet covers.
+    periodStart: date('period_start'),
+    uploadedById: varchar('uploaded_by_id', { length: 30 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    totalRows: integer('total_rows').notNull(),
+    importedRows: integer('imported_rows').notNull(),
+    skippedRows: integer('skipped_rows').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sourceCreatedIdx: index('import_batches_source_created_idx').on(t.source, t.createdAt),
+  })
+);
+
+/**
+ * One Rally work product (story/defect) for one person in one bi-weekly
+ * period, exactly as the export reported it. Re-uploading the same sheet for
+ * the same period updates these rows rather than adding new ones, so
+ * productivity numbers never double-count.
+ */
+export const rallyItems = pgTable(
+  'rally_items',
+  {
+    id: id(),
+    periodStart: date('period_start').notNull(),
+    workProduct: varchar('work_product', { length: 400 }).notNull(),
+    release: varchar('release', { length: 160 }),
+    state: varchar('state', { length: 60 }).notNull(),
+    estimate: doublePrecision('estimate').notNull().default(0), // story points
+    todo: doublePrecision('todo').notNull().default(0), // hours remaining
+    timeSpent: doublePrecision('time_spent').notNull().default(0), // hours
+    ownerRaw: varchar('owner_raw', { length: 255 }).notNull(),
+    userId: varchar('user_id', { length: 30 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    batchId: varchar('batch_id', { length: 30 }).references(() => importBatches.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueItem: uniqueIndex('rally_items_user_period_item_key').on(t.userId, t.periodStart, t.workProduct),
+    periodIdx: index('rally_items_period_idx').on(t.periodStart),
+  })
+);
+
+/**
+ * The org directory as Keka exports it. Keyed by Employee Number; linked to a
+ * login (users row) by display name where one exists. People without a login
+ * still appear here — an Admin onboards them when they need to sign in.
+ */
+export const kekaEmployees = pgTable(
+  'keka_employees',
+  {
+    id: id(),
+    employeeNumber: varchar('employee_number', { length: 40 }).notNull(),
+    displayName: varchar('display_name', { length: 160 }).notNull(),
+    jobTitle: varchar('job_title', { length: 160 }),
+    department: varchar('department', { length: 160 }),
+    location: varchar('location', { length: 160 }),
+    reporteesCount: integer('reportees_count').notNull().default(0),
+    userId: varchar('user_id', { length: 30 }).references(() => users.id, { onDelete: 'set null' }),
+    batchId: varchar('batch_id', { length: 30 }).references(() => importBatches.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    employeeNumberIdx: uniqueIndex('keka_employees_employee_number_key').on(t.employeeNumber),
+    userIdx: index('keka_employees_user_idx').on(t.userId),
+  })
+);
+
 /* ------------------------------- relations ------------------------------- */
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -338,6 +426,19 @@ export const outcomesRelations = relations(outcomes, ({ one, many }) => ({
   tasks: many(outcomeTasks),
 }));
 
+export const importBatchesRelations = relations(importBatches, ({ one }) => ({
+  uploadedBy: one(users, { fields: [importBatches.uploadedById], references: [users.id] }),
+}));
+
+export const rallyItemsRelations = relations(rallyItems, ({ one }) => ({
+  user: one(users, { fields: [rallyItems.userId], references: [users.id] }),
+  batch: one(importBatches, { fields: [rallyItems.batchId], references: [importBatches.id] }),
+}));
+
+export const kekaEmployeesRelations = relations(kekaEmployees, ({ one }) => ({
+  user: one(users, { fields: [kekaEmployees.userId], references: [users.id] }),
+}));
+
 export const outcomeTasksRelations = relations(outcomeTasks, ({ one }) => ({
   outcome: one(outcomes, { fields: [outcomeTasks.outcomeId], references: [outcomes.id] }),
   task: one(tasks, { fields: [outcomeTasks.taskId], references: [tasks.id] }),
@@ -351,3 +452,6 @@ export type Task = typeof tasks.$inferSelect;
 export type WorkLog = typeof workLogs.$inferSelect;
 export type Outcome = typeof outcomes.$inferSelect;
 export type OutcomeTask = typeof outcomeTasks.$inferSelect;
+export type ImportBatch = typeof importBatches.$inferSelect;
+export type RallyItem = typeof rallyItems.$inferSelect;
+export type KekaEmployee = typeof kekaEmployees.$inferSelect;

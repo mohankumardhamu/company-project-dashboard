@@ -26,7 +26,7 @@ export function createFileAdapter(outboxDir: string): DigestAdapter {
             scopeLabel: message.scopeLabel,
             to: message.to,
             subject: message.subject,
-            week: message.week,
+            period: message.period,
             sentAt: new Date().toISOString(),
           },
           null,

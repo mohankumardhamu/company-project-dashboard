@@ -36,6 +36,13 @@
       "when": 1788935452759,
       "tag": "0004_quick_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794482996716,
+      "tag": "0005_daily_raider",
+      "breakpoints": true
     }
   ]
 }

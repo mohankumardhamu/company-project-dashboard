@@ -69,7 +69,7 @@ const run = async () => {
   console.log('\n── Login page');
   await page.goto(BASE, { waitUntil: 'networkidle' });
   check('login page renders', await page.isVisible('#email'));
-  await page.click('.demo-row');
+  await page.click('.demo-row:has-text("vp@acme.com")');
   check('demo account fills the form', (await page.inputValue('#email')) === 'vp@acme.com');
   await page.screenshot({ path: `${SHOTS}/01-login.png` });
 
@@ -82,8 +82,8 @@ const run = async () => {
   console.log('\n── VP');
   await login(page, 'vp@acme.com');
   const vpNav = await navLabels(page);
-  check('VP nav has Dashboard/Portfolio/Accounts/Projects/Teams/Register/Reports/People',
-    ['Dashboard', 'Portfolio', 'Accounts', 'Projects', 'Teams', 'Register', 'Reports', 'People'].every((l) => vpNav.includes(l)), vpNav.join(','));
+  check('VP nav has Dashboard/Portfolio/Accounts/Projects/Teams/Register/Productivity/Imports/Reports/People',
+    ['Dashboard', 'Portfolio', 'Accounts', 'Projects', 'Teams', 'Register', 'Productivity', 'Imports', 'Reports', 'People'].every((l) => vpNav.includes(l)), vpNav.join(','));
   check('VP nav has no My work', !vpNav.includes('My work'), vpNav.join(','));
   await page.waitForSelector('.stat-value');
   const vpStats = await page.$$eval('.stat-value', (els) => els.map((e) => e.textContent.trim()));
@@ -91,8 +91,8 @@ const run = async () => {
   const vpTeamCount = Number(vpStats[1]);
   check('VP dashboard counts projects', vpProjectCount >= 2, vpStats.join('|'));
   check('VP dashboard counts teams', vpTeamCount >= 4, vpStats.join('|'));
-  check('VP dashboard shows the "This week" digest panel', (await page.textContent('body')).includes('This week'));
-  const digestRows = await page.$$('.card:has-text("This week") table tbody tr');
+  check('VP dashboard shows the "This period" digest panel', (await page.textContent('body')).includes('This period'));
+  const digestRows = await page.$$('.card:has-text("This period") table tbody tr');
   check('the digest panel lists every account', digestRows.length >= 2, `got ${digestRows.length}`);
   await page.screenshot({ path: `${SHOTS}/02-vp-dashboard.png`, fullPage: true });
 
@@ -281,7 +281,7 @@ const run = async () => {
   await page.click('table tbody tr:has-text("Payments Core") a');
   await page.waitForSelector('.card');
   const bodyText = await page.textContent('body');
-  check('team page shows this week\'s entries', bodyText.includes("This week's entries"));
+  check('team page shows this period\'s entries', bodyText.includes("This period's entries"));
   check('team page shows hours per member', /\d+(\.\d+)? h/.test(bodyText));
   await page.screenshot({ path: `${SHOTS}/07-pm-team-detail.png`, fullPage: true });
 
@@ -319,23 +319,57 @@ const run = async () => {
   const name = download.suggestedFilename();
   check('xlsx download starts', name.endsWith('.xlsx'), name);
   await download.saveAs(`${SHOTS}/report.xlsx`);
-  check('downloaded filename names the week', /weekly-status_.*_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.xlsx/.test(name), name);
+  check('downloaded filename names the period', /biweekly-status_.*_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.xlsx/.test(name), name);
 
-  // Previous week navigation
-  const weekBefore = await page.inputValue('#r-week');
+  // Previous period navigation
+  const periodBefore = await page.inputValue('#r-period');
   await page.click('button:has-text("Previous")');
   await page.waitForLoadState('networkidle');
-  check('previous week changes the range', (await page.inputValue('#r-week')) < weekBefore);
+  const periodAfter = await page.inputValue('#r-period');
+  check('previous period moves back two weeks', (new Date(periodBefore) - new Date(periodAfter)) / 86400000 === 14, `${periodBefore} -> ${periodAfter}`);
+
+  console.log('\n── PM imports a Rally export');
+  await page.click('.nav a:has-text("Imports")');
+  await page.waitForSelector('#rally-file');
+  await page.waitForFunction(() => document.querySelectorAll('#rally-period option').length > 1, null, { timeout: 15000 });
+  const uiStory = `US${Date.now().toString().slice(-6)}: Browser check story`;
+  await page.setInputFiles('#rally-file', {
+    name: 'rally-ui.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      `Work Product,Release,State,Estimate,ToDo,Time Spent,Owner\n${uiStory},R9,Accepted,13,0,7.5,Sneha Kulkarni\nUS1: Not mine,R9,Accepted,1,0,1,Fatima Sheikh\n`
+    ),
+  });
+  await page.click('button:has-text("Preview")');
+  await page.waitForSelector('text=preview only, nothing saved yet', { timeout: 15000 });
+  const previewText = await page.textContent('body');
+  check('preview lists the new row and the skipped row with its reason', previewText.includes(uiStory) && previewText.includes('not on a team you manage'));
+  await page.click('button:has-text("Import 1 rows")');
+  await page.waitForSelector('.alert.ok:has-text("Imported 1 rows")', { timeout: 15000 });
+  check('import confirms how many rows landed', true);
+  await page.screenshot({ path: `${SHOTS}/08b-pm-imports.png`, fullPage: true });
+
+  console.log('\n── PM productivity');
+  await page.click('.nav a:has-text("Productivity")');
+  await page.waitForSelector('.hchart-row', { timeout: 15000 });
+  const prodBody = await page.textContent('body');
+  check('productivity shows the imported story', prodBody.includes(uiStory));
+  check('productivity charts people from the PM\'s teams only', prodBody.includes('Sneha Kulkarni') && !prodBody.includes('Fatima Sheikh'));
+  check('productivity draws the per-period trend', (await page.$$('.vchart-col')).length === 12, `got ${(await page.$$('.vchart-col')).length}`);
+  await page.hover('.hchart-row >> nth=0');
+  check('hovering a bar shows a tooltip', await page.isVisible('.chart-tip'));
+  await page.screenshot({ path: `${SHOTS}/08c-pm-productivity.png`, fullPage: true });
 
   /* ------------------------------------------------------------ ENGINEER */
   console.log('\n── Engineer');
   await login(page, 'eng.anita@acme.com');
   check(
-    'Engineer dashboard has no "This week" digest panel — they never receive one',
-    !(await page.textContent('body')).includes('This week')
+    'Engineer dashboard has no "This period" digest panel — they never receive one',
+    !(await page.textContent('body')).includes('This period')
   );
   const engNav = await navLabels(page);
   check('Engineer nav has My work', engNav.includes('My work'));
+  check('Engineer nav has Productivity and Imports', engNav.includes('Productivity') && engNav.includes('Imports'), engNav.join(','));
   check('Engineer nav has no Reports', !engNav.includes('Reports'), engNav.join(','));
   check('Engineer nav has no People', !engNav.includes('People'), engNav.join(','));
   check('Engineer nav has no Portfolio', !engNav.includes('Portfolio'), engNav.join(','));
@@ -373,8 +407,8 @@ const run = async () => {
   await page.click('.card button[type="submit"]');
   await page.waitForSelector('.alert.ok', { timeout: 15000 });
   check('entry saves', (await page.textContent('.alert.ok')).includes('saved') || (await page.textContent('.alert.ok')).includes('updated'));
-  await page.waitForSelector(`.card:has-text("This week") :text("${summaryText}")`, { timeout: 15000 });
-  check('entry shows in this week', (await page.textContent('body')).includes(summaryText));
+  await page.waitForSelector(`.card:has-text("This period") :text("${summaryText}")`, { timeout: 15000 });
+  check('entry shows in this period', (await page.textContent('body')).includes(summaryText));
   await page.screenshot({ path: `${SHOTS}/09-engineer-mywork.png`, fullPage: true });
 
   // Re-saving the same task/day must warn that it replaces the entry.

@@ -35,8 +35,8 @@ export default function PortfolioPage() {
         title="Portfolio"
         subtitle={
           data
-            ? `Which accounts need attention — ranked by risk and outcome trend, not alphabetically · ${formatRange(data.week.from, data.week.to)} vs the week before`
-            : 'Which accounts need attention this week.'
+            ? `Which accounts need attention — ranked by risk and outcome trend, not alphabetically · ${formatRange(data.period.from, data.period.to)} vs the period before`
+            : 'Which accounts need attention this period.'
         }
       />
       <div className="content">
@@ -81,13 +81,13 @@ export default function PortfolioPage() {
                         <td className="num">{a.memberCount}</td>
                         <td>
                           <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
-                            <span className="strong">{a.trend.outcomes.thisWeek}</span>
+                            <span className="strong">{a.trend.outcomes.thisPeriod}</span>
                             <Delta value={a.trend.outcomes.delta} />
                           </div>
                         </td>
                         <td>
                           <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
-                            <span className="strong">{a.trend.tasksDone.thisWeek}</span>
+                            <span className="strong">{a.trend.tasksDone.thisPeriod}</span>
                             <Delta value={a.trend.tasksDone.delta} />
                           </div>
                         </td>
@@ -105,7 +105,7 @@ export default function PortfolioPage() {
                           )}
                         </td>
                         <td className="muted small nowrap">
-                          {hours(a.trend.hours.thisWeek)}{' '}
+                          {hours(a.trend.hours.thisPeriod)}{' '}
                           <span className="muted">
                             ({a.trend.hours.delta >= 0 ? '+' : ''}
                             {a.trend.hours.delta.toFixed(2)})

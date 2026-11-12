@@ -18,7 +18,8 @@ import {
 } from '../components/ui';
 import { api, downloadFile } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { formatDate, hours, isOverdue, startOfWeekString, todayString } from '../lib/format';
+import { formatDate, hours, isOverdue, todayString } from '../lib/format';
+import { usePeriods } from '../lib/periods';
 import type { DirectoryUser, OutcomeCategory, OutcomeSummary, TeamDetail, WorkLogRow } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
@@ -26,8 +27,11 @@ export default function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
   const { data, error, loading, reload } = useApi<TeamDetail>(id ? `/teams/${id}` : null);
-  const weekFrom = startOfWeekString(todayString());
-  const { data: logs } = useApi<WorkLogRow[]>(id ? `/worklogs?teamId=${id}&from=${weekFrom}` : null);
+  const periods = usePeriods(1);
+  const periodFrom = periods.data?.current.from ?? null;
+  const { data: logs } = useApi<WorkLogRow[]>(
+    id && periodFrom ? `/worklogs?teamId=${id}&from=${periodFrom}` : null
+  );
   const outcomesApi = useApi<OutcomeSummary[]>(id ? `/outcomes?teamId=${id}` : null);
 
   const [addingMember, setAddingMember] = useState(false);
@@ -48,7 +52,7 @@ export default function TeamDetailPage() {
   async function exportReport() {
     setActionError(null);
     try {
-      await downloadFile(`/reports/weekly.xlsx?teamId=${id}`, 'weekly-report.xlsx');
+      await downloadFile(`/reports/biweekly.xlsx?teamId=${id}`, 'biweekly-report.xlsx');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Export failed');
     }
@@ -90,7 +94,7 @@ export default function TeamDetailPage() {
           <>
             {can('ADMIN', 'PM', 'DIRECTOR', 'VP') && (
               <button className="btn" onClick={exportReport}>
-                Export weekly report
+                Export bi-weekly report
               </button>
             )}
             {data.canManage && (
@@ -121,7 +125,7 @@ export default function TeamDetailPage() {
 
         <Card
           title="Members"
-          hint={`Hours logged this week (from ${formatDate(weekFrom)})`}
+          hint={`Hours logged this period (from ${formatDate(periodFrom)})`}
           flush
         >
           {data.members.length === 0 ? (
@@ -136,7 +140,7 @@ export default function TeamDetailPage() {
                     <th>Member</th>
                     <th>Role</th>
                     <th className="num">Open tasks</th>
-                    <th className="num">Hours this week</th>
+                    <th className="num">Hours this period</th>
                     {data.canManage && <th />}
                   </tr>
                 </thead>
@@ -229,12 +233,12 @@ export default function TeamDetailPage() {
         </Card>
 
         <Card
-          title="This week's entries"
-          hint="What each member logged since Monday — this is what the weekly export contains"
+          title="This period's entries"
+          hint="What each member logged since the period started — this is what the bi-weekly export contains"
           flush
         >
           {!logs || logs.length === 0 ? (
-            <Empty title="Nothing logged this week yet">
+            <Empty title="Nothing logged this period yet">
               Engineers add entries from their “My work” page.
             </Empty>
           ) : (

@@ -72,6 +72,32 @@ export const api = {
   del: (path: string) => request<void>('DELETE', path),
 };
 
+/**
+ * Sends a file's raw bytes (no multipart) to an import endpoint; the server
+ * reads the original file name from the query string.
+ */
+export async function uploadFile<T>(path: string, file: File, params: Record<string, string>): Promise<T> {
+  const token = tokenStore.get();
+  const query = new URLSearchParams({ ...params, fileName: file.name });
+  const res = await fetch(`/api${path}?${query}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/octet-stream',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: file,
+  });
+  if (res.status === 401) {
+    tokenStore.set(null);
+    onUnauthorized();
+  }
+  const payload = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new ApiError(res.status, payload?.error ?? `Upload failed (${res.status})`, payload?.details);
+  }
+  return payload as T;
+}
+
 /** Streams a file response and hands it to the browser as a download. */
 export async function downloadFile(path: string, fallbackName: string): Promise<void> {
   const token = tokenStore.get();

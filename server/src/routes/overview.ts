@@ -2,7 +2,7 @@ import { and, asc, count, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, currentUser } from '../auth';
-import { endOfWeek, startOfWeek, today } from '../dates';
+import { endOfPeriod, startOfPeriod, today } from '../dates';
 import { db } from '../db';
 import { projects, tasks, teamMembers, teams, workLogs } from '../db/schema';
 import { ah } from '../http';
@@ -20,16 +20,16 @@ overviewRouter.get(
   '/',
   ah(async (req, res) => {
     const me = currentUser(req);
-    const { week } = z
-      .object({ week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+    const { period } = z
+      .object({ period: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
       .parse(req.query);
-    const anchor = week ?? today();
-    const from = startOfWeek(anchor);
-    const to = endOfWeek(anchor);
+    const anchor = period ?? today();
+    const from = startOfPeriod(anchor);
+    const to = endOfPeriod(anchor);
 
     const teamIds = await visibleTeamIds(me);
 
-    const [[projectCount], [teamCount], memberRows, taskRows, weekLogs] = await Promise.all([
+    const [[projectCount], [teamCount], memberRows, taskRows, periodLogs] = await Promise.all([
       db.select({ n: count() }).from(projects).where(projectScope(me)),
       db.select({ n: count() }).from(teams).where(teamScope(me)),
       teamIds.length
@@ -75,7 +75,7 @@ overviewRouter.get(
 
     res.json({
       scope: me.role,
-      week: { from, to },
+      period: { from, to },
       totals: {
         projects: Number(projectCount?.n ?? 0),
         teams: Number(teamCount?.n ?? 0),
@@ -87,11 +87,11 @@ overviewRouter.get(
           blocked: byStatus.BLOCKED ?? 0,
           done: byStatus.DONE ?? 0,
         },
-        thisWeek: {
-          hours: Number(weekLogs.reduce((s, l) => s + l.hours, 0).toFixed(2)),
-          entries: weekLogs.length,
-          contributors: new Set(weekLogs.map((l) => l.userId)).size,
-          blocked: weekLogs.filter((l) => l.status === 'BLOCKED').length,
+        thisPeriod: {
+          hours: Number(periodLogs.reduce((s, l) => s + l.hours, 0).toFixed(2)),
+          entries: periodLogs.length,
+          contributors: new Set(periodLogs.map((l) => l.userId)).size,
+          blocked: periodLogs.filter((l) => l.status === 'BLOCKED').length,
         },
       },
       projects: projectRows.map((p) => ({

@@ -11,25 +11,30 @@ import {
   WorkLogStatusBadge,
 } from '../components/ui';
 import { api } from '../lib/api';
-import { addDaysString, formatDate, formatDayShort, hours, isOverdue, startOfWeekString, todayString } from '../lib/format';
+import { addDaysString, formatDate, formatDayShort, hours, isOverdue, todayString } from '../lib/format';
+import { usePeriods } from '../lib/periods';
 import type { TaskStatus, TaskWithContext, WorkLogRow, WorkLogStatus } from '../lib/types';
 import { useApi } from '../lib/useApi';
 
 export default function MyWork() {
   const today = todayString();
-  const weekFrom = startOfWeekString(today);
+  const periods = usePeriods(1);
+  const periodFrom = periods.data?.current.from ?? null;
 
   const tasks = useApi<TaskWithContext[]>('/tasks?mine=1');
-  const logs = useApi<WorkLogRow[]>(`/worklogs?mine=1&from=${addDaysString(weekFrom, -7)}`);
+  const logs = useApi<WorkLogRow[]>(periodFrom ? `/worklogs?mine=1&from=${periodFrom}` : null, [periodFrom]);
 
   const openTasks = (tasks.data ?? []).filter((t) => t.status !== 'DONE');
-  const thisWeekLogs = (logs.data ?? []).filter((l) => l.date >= weekFrom);
-  const weekHours = thisWeekLogs.reduce((s, l) => s + l.hours, 0);
-  const loggedToday = thisWeekLogs.some((l) => l.date === today);
+  const thisPeriodLogs = (logs.data ?? []).filter((l) => periodFrom !== null && l.date >= periodFrom);
+  const periodHours = thisPeriodLogs.reduce((s, l) => s + l.hours, 0);
+  const loggedToday = thisPeriodLogs.some((l) => l.date === today);
 
   const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDaysString(weekFrom, i)).filter((d) => d <= today),
-    [weekFrom, today]
+    () =>
+      periodFrom
+        ? Array.from({ length: 14 }, (_, i) => addDaysString(periodFrom, i)).filter((d) => d <= today)
+        : [],
+    [periodFrom, today]
   );
 
   function refresh() {
@@ -41,7 +46,7 @@ export default function MyWork() {
     <>
       <PageHeader
         title="My work"
-        subtitle="Log what you did each day. Your PM's weekly report is built from these entries."
+        subtitle="Log what you did each day. Your PM's bi-weekly report is built from these entries."
       />
       <div className="content">
         <ErrorNote message={tasks.error ?? logs.error} />
@@ -49,7 +54,7 @@ export default function MyWork() {
 
         <div className="grid stats">
           <Stat label="Open tasks" value={openTasks.length} foot={`${tasks.data?.length ?? 0} assigned in total`} />
-          <Stat label="Hours this week" value={hours(weekHours)} foot={`${thisWeekLogs.length} entries`} />
+          <Stat label="Hours this period" value={hours(periodHours)} foot={`${thisPeriodLogs.length} entries`} />
           <Stat
             label="Today"
             value={loggedToday ? 'Logged' : 'Not logged'}
@@ -118,9 +123,9 @@ export default function MyWork() {
           )}
         </Card>
 
-        <Card title="This week" hint="Monday to today — click an entry's day to see what you filed" flush>
+        <Card title="This period" hint="Period start to today — click an entry's day to see what you filed" flush>
           {days.length === 0 ? (
-            <Empty title="The week has just started" />
+            <Empty title="The period has just started" />
           ) : (
             <div className="table-wrap">
               <table>
@@ -133,7 +138,7 @@ export default function MyWork() {
                 </thead>
                 <tbody>
                   {days.map((d) => {
-                    const dayLogs = thisWeekLogs.filter((l) => l.date === d);
+                    const dayLogs = thisPeriodLogs.filter((l) => l.date === d);
                     const dayHours = dayLogs.reduce((s, l) => s + l.hours, 0);
                     return (
                       <tr key={d}>
@@ -355,7 +360,7 @@ function LogForm({
         </div>
         <div className="form-actions">
           <span className="hint spacer">
-            These entries roll straight into the weekly report your PM sends to the Director.
+            These entries roll straight into the bi-weekly report your PM sends to the Director.
           </span>
           <button className="btn primary" type="submit" disabled={busy}>
             {busy && <span className="spinner" />}

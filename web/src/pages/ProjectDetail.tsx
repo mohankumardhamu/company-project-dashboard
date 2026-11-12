@@ -53,7 +53,7 @@ export default function ProjectDetailPage() {
   async function exportReport() {
     setActionError(null);
     try {
-      await downloadFile(`/reports/weekly.xlsx?projectId=${id}`, 'weekly-report.xlsx');
+      await downloadFile(`/reports/biweekly.xlsx?projectId=${id}`, 'biweekly-report.xlsx');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Export failed');
     }
@@ -98,7 +98,7 @@ export default function ProjectDetailPage() {
           <>
             {can('ADMIN', 'PM', 'DIRECTOR', 'VP') && (
               <button className="btn" onClick={exportReport}>
-                Export weekly report
+                Export bi-weekly report
               </button>
             )}
             {data.canManage && (

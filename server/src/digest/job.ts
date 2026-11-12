@@ -1,7 +1,8 @@
 import type { AuthUser } from '../auth';
+import type { DateString } from '../dates';
 import { db } from '../db';
-import { buildWeeklyReport, weeklyReportFilename } from '../reports/weekly';
-import { buildWeeklyWorkbook } from '../reports/workbook';
+import { buildPeriodReport, periodReportFilename } from '../reports/biweekly';
+import { buildPeriodWorkbook } from '../reports/workbook';
 import type { DigestAdapter } from './adapter';
 import { getDigestAdapter } from './factory';
 import { recipientsForAccount, recipientsForTeam } from './recipients';
@@ -11,7 +12,7 @@ import { recipientsForAccount, recipientsForTeam } from './recipients';
  * and every scope it touches is one it's explicitly meant to cover. Safe
  * because canReadTeam/canReadAccount short-circuit on role for ADMIN and
  * never look the id up in the users table. */
-const SYSTEM_ACTOR: AuthUser = { id: 'system', name: 'Weekly Digest', email: 'digest@internal', role: 'ADMIN' };
+const SYSTEM_ACTOR: AuthUser = { id: 'system', name: 'Bi-weekly Digest', email: 'digest@internal', role: 'ADMIN' };
 
 export interface DigestSendResult {
   scope: 'team' | 'account';
@@ -32,9 +33,11 @@ export interface DigestRunSummary {
 
 export interface RunDigestOptions {
   adapter?: DigestAdapter;
+  /** Any day in the period to send; defaults to the period containing today. */
+  period?: DateString;
 }
 
-export async function runWeeklyDigest(opts: RunDigestOptions = {}): Promise<DigestRunSummary> {
+export async function runDigest(opts: RunDigestOptions = {}): Promise<DigestRunSummary> {
   const adapter = opts.adapter ?? getDigestAdapter();
   const summary: DigestRunSummary = { sent: [], skipped: [] };
 
@@ -45,24 +48,27 @@ export async function runWeeklyDigest(opts: RunDigestOptions = {}): Promise<Dige
 
   // A scope can legitimately have recipients but nothing to report on yet —
   // a brand-new account with no projects attached still has an owning
-  // Director and every VP as recipients, but buildWeeklyReport throws for a
+  // Director and every VP as recipients, but buildPeriodReport throws for a
   // scope with zero readable teams (the right behavior for an interactive
   // export, where "nothing to report" should be a clear error). One empty
-  // scope must not take down the whole weekly run, so it's caught and
+  // scope must not take down the whole run, so it's caught and
   // skipped here rather than left to propagate.
   async function deliver(scope: 'team' | 'account', id: string, label: string, to: string[]) {
     try {
-      const report = await buildWeeklyReport(SYSTEM_ACTOR, scope === 'team' ? { teamId: id } : { accountId: id });
-      const workbook = await buildWeeklyWorkbook(report);
+      const report = await buildPeriodReport(SYSTEM_ACTOR, {
+        ...(scope === 'team' ? { teamId: id } : { accountId: id }),
+        period: opts.period,
+      });
+      const workbook = await buildPeriodWorkbook(report);
       await adapter.send({
         scope,
         scopeId: id,
         scopeLabel: report.scopeLabel,
         to,
-        subject: `Weekly status — ${report.scopeLabel}`,
-        filename: weeklyReportFilename(report),
+        subject: `Bi-weekly status — ${report.scopeLabel}`,
+        filename: periodReportFilename(report),
         workbook,
-        week: { from: report.from, to: report.to },
+        period: { from: report.from, to: report.to },
       });
       console.log(`[digest] sent ${scope}:${label} to=${to.join(',')} via=${adapter.name}`);
       summary.sent.push({ scope, id, label: report.scopeLabel, to });

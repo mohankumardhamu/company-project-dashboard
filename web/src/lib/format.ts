@@ -34,12 +34,6 @@ export function addDaysString(d: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Monday of the week containing `d`. */
-export function startOfWeekString(d: string): string {
-  const date = new Date(`${d}T00:00:00Z`);
-  return addDaysString(d, -((date.getUTCDay() + 6) % 7));
-}
-
 export function isOverdue(dueDate: string | null, status: string): boolean {
   if (!dueDate || status === 'DONE') return false;
   return dueDate < todayString();

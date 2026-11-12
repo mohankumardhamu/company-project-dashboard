@@ -1,7 +1,7 @@
 import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { AuthUser } from './auth';
 import { db } from './db';
-import { accounts, outcomes, projects, teamMembers, teams } from './db/schema';
+import { accounts, outcomes, projects, teamMembers, teams, users } from './db/schema';
 import type { OutcomeCategory } from './db/schema';
 
 /**
@@ -154,6 +154,65 @@ export async function canVerifyOutcome(user: AuthUser, outcomeId: string): Promi
   const projectId = rows[0]?.projectId;
   if (!projectId) return false;
   return canManageProject(user, projectId);
+}
+
+/* ------------------------------- people ----------------------------------
+ * Individual productivity (Rally imports) is per-person data, so it is scoped
+ * by person rather than by team:
+ *
+ *   ADMIN / VP / DIRECTOR -> everyone.
+ *   PM                    -> themselves and the members of teams they lead.
+ *   ENGINEER              -> only themselves.
+ *
+ * Importing on someone's behalf is a write, so VP (read-only) never may, and
+ * a Director may only for people on teams attached to projects they own.
+ */
+
+/** User ids whose productivity `user` may read, or undefined for "everyone". */
+export async function visibleUserIds(user: AuthUser): Promise<string[] | undefined> {
+  if (user.role === 'ADMIN' || user.role === 'VP' || user.role === 'DIRECTOR') return undefined;
+  if (user.role === 'ENGINEER') return [user.id];
+  const rows = await db
+    .selectDistinct({ id: teamMembers.userId })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .where(eq(teams.pmId, user.id));
+  return [...new Set([user.id, ...rows.map((r) => r.id)])];
+}
+
+/** A WHERE fragment for the `users` table matching visibleUserIds, or undefined for "everyone". */
+export async function userScope(user: AuthUser): Promise<SQL | undefined> {
+  const ids = await visibleUserIds(user);
+  return ids ? inArray(users.id, ids) : undefined;
+}
+
+/** User ids `user` may import Rally rows for, or undefined for "anyone". */
+export async function importableUserIds(user: AuthUser): Promise<string[] | undefined> {
+  switch (user.role) {
+    case 'ADMIN':
+      return undefined;
+    case 'VP':
+      return [];
+    case 'DIRECTOR': {
+      const rows = await db
+        .selectDistinct({ id: teamMembers.userId })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+        .innerJoin(projects, eq(projects.id, teams.projectId))
+        .where(eq(projects.directorId, user.id));
+      return [...new Set([user.id, ...rows.map((r) => r.id)])];
+    }
+    case 'PM':
+      return visibleUserIds(user) as Promise<string[]>;
+    case 'ENGINEER':
+    default:
+      return [user.id];
+  }
+}
+
+/** Org directory (Keka) imports change who exists in the org: Admin, or a VP (who can onboard anyone). */
+export function canImportOrgDirectory(user: AuthUser): boolean {
+  return user.role === 'ADMIN' || user.role === 'VP';
 }
 
 /* ------------------------------- register --------------------------------

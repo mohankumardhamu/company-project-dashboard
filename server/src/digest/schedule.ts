@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { env } from '../env';
-import { runWeeklyDigest } from './job';
+import { addDays, startOfPeriod, today } from '../dates';
+import { runDigest } from './job';
 
 /**
  * node-cron running inside this single API process is the right size here:
@@ -10,10 +11,10 @@ import { runWeeklyDigest } from './job';
  * times. At that point the fix is a single external trigger — a platform
  * cron hitting an internal endpoint once, or a dedicated worker with leader
  * election — not a queue or message broker: the job is still one
- * fire-and-forget weekly batch, not a stream of work that needs a queue's
+ * fire-and-forget bi-weekly batch, not a stream of work that needs a queue's
  * durability or backpressure.
  */
-export function scheduleWeeklyDigest(): void {
+export function scheduleDigest(): void {
   if (!env.digestEnabled) {
     console.log('[digest] scheduling disabled (set DIGEST_ENABLED=true to turn it on)');
     return;
@@ -25,7 +26,15 @@ export function scheduleWeeklyDigest(): void {
   cron.schedule(
     env.digestCron,
     () => {
-      runWeeklyDigest().catch((err) => console.error('[digest] run failed:', err));
+      // DIGEST_CRON still fires weekly (cron can't express "every other
+      // Monday" against an arbitrary anchor), so only the run on the first day
+      // of a new period sends — and it sends the period that just finished.
+      const now = today();
+      if (startOfPeriod(now) !== now) {
+        console.log(`[digest] ${now} is mid-period — nothing to send`);
+        return;
+      }
+      runDigest({ period: addDays(now, -1) }).catch((err) => console.error('[digest] run failed:', err));
     },
     { timezone: env.digestTimezone }
   );

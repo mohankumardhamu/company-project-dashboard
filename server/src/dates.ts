@@ -1,3 +1,5 @@
+import { env } from './env';
+
 /**
  * Date-only helpers. `date` columns round-trip as 'YYYY-MM-DD' strings, so all
  * of these speak that format and never carry a timezone.
@@ -20,16 +22,36 @@ export function addDays(d: DateString, days: number): DateString {
   return next.toISOString().slice(0, 10);
 }
 
-/** Monday of the ISO week containing `d`. */
-export function startOfWeek(d: DateString): DateString {
-  const day = asUtc(d);
-  const dow = (day.getUTCDay() + 6) % 7; // 0 = Monday
-  return addDays(d, -dow);
+/** Whole days from `a` to `b` (negative when b is earlier). */
+export function daysBetween(a: DateString, b: DateString): number {
+  return Math.round((asUtc(b).getTime() - asUtc(a).getTime()) / 86_400_000);
 }
 
-/** Sunday of the ISO week containing `d`. */
-export function endOfWeek(d: DateString): DateString {
-  return addDays(startOfWeek(d), 6);
+/** Length of a reporting period. The app reports in fortnights, not weeks. */
+export const PERIOD_DAYS = 14;
+
+/**
+ * First Monday of the bi-weekly period containing `d`. Periods are counted
+ * from env.biweekAnchor in both directions, so every caller agrees on the
+ * same boundaries regardless of year.
+ */
+export function startOfPeriod(d: DateString): DateString {
+  const offset = ((daysBetween(env.biweekAnchor, d) % PERIOD_DAYS) + PERIOD_DAYS) % PERIOD_DAYS;
+  return addDays(d, -offset);
+}
+
+/** Last Sunday of the bi-weekly period containing `d`. */
+export function endOfPeriod(d: DateString): DateString {
+  return addDays(startOfPeriod(d), PERIOD_DAYS - 1);
+}
+
+/** The `count` most recent periods ending with the one containing `d`, newest first. */
+export function recentPeriods(count: number, d: DateString = today()): { from: DateString; to: DateString }[] {
+  const current = startOfPeriod(d);
+  return Array.from({ length: count }, (_, i) => {
+    const from = addDays(current, -PERIOD_DAYS * i);
+    return { from, to: addDays(from, PERIOD_DAYS - 1) };
+  });
 }
 
 export function today(): DateString {

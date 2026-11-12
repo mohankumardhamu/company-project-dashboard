@@ -1,16 +1,17 @@
 import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { AuthUser } from '../auth';
-import { addDays, endOfWeek, startOfWeek, today, type DateString } from '../dates';
+import { addDays, endOfPeriod, PERIOD_DAYS, startOfPeriod, today, type DateString } from '../dates';
 import { db } from '../db';
 import { accounts, outcomes, projects, tasks, teamMembers, teams, workLogs } from '../db/schema';
 import { badRequest, forbidden, notFound } from '../http';
 import { canReadAccount, canReadProject, canReadTeam, teamScope } from '../scope';
 
-export interface WeeklyReportParams {
+export interface PeriodReportParams {
   accountId?: string;
   projectId?: string;
   teamId?: string;
-  week?: DateString;
+  /** Any day inside the bi-weekly period to report on; defaults to today. */
+  period?: DateString;
 }
 
 export interface MemberRow {
@@ -49,7 +50,7 @@ export interface TaskRow {
   status: string;
   priority: string;
   dueDate: string;
-  hoursThisWeek: number;
+  hoursThisPeriod: number;
   totalLoggedHours: number;
 }
 
@@ -65,7 +66,7 @@ export interface OutcomeRow {
   verified: boolean;
 }
 
-export interface WeeklyReport {
+export interface PeriodReport {
   slug: string;
   title: string;
   scopeLabel: string;
@@ -91,7 +92,7 @@ export interface WeeklyReport {
 }
 
 /** Resolves which teams the report covers, and checks the caller may read them. */
-async function resolveScope(user: AuthUser, params: WeeklyReportParams) {
+async function resolveScope(user: AuthUser, params: PeriodReportParams) {
   const scopesGiven = [params.accountId, params.projectId, params.teamId].filter(Boolean).length;
   if (scopesGiven > 1) {
     throw badRequest('Pass at most one of accountId, projectId or teamId');
@@ -168,14 +169,14 @@ type MemberStats = Pick<
   'hours' | 'entries' | 'daysLogged' | 'tasksTouched' | 'tasksOpen' | 'tasksDone' | 'blockedEntries'
 >;
 
-export async function buildWeeklyReport(
+export async function buildPeriodReport(
   user: AuthUser,
-  params: WeeklyReportParams
-): Promise<WeeklyReport> {
+  params: PeriodReportParams
+): Promise<PeriodReport> {
   const { teamIds, label, slug } = await resolveScope(user, params);
-  const anchor = params.week ?? today();
-  const from = startOfWeek(anchor);
-  const to = endOfWeek(anchor);
+  const anchor = params.period ?? today();
+  const from = startOfPeriod(anchor);
+  const to = endOfPeriod(anchor);
 
   const projectNameOf = (p?: { name: string; code: string } | null) =>
     p ? `${p.code} — ${p.name}` : 'Unassigned';
@@ -183,13 +184,13 @@ export async function buildWeeklyReport(
   if (teamIds.length === 0) {
     return {
       slug,
-      title: 'Weekly Status Report',
+      title: 'Bi-weekly Status Report',
       scopeLabel: label,
       generatedBy: `${user.name} (${user.role})`,
       generatedAt: new Date().toISOString(),
       from,
       to,
-      days: Array.from({ length: 7 }, (_, i) => addDays(from, i)),
+      days: Array.from({ length: PERIOD_DAYS }, (_, i) => addDays(from, i)),
       totals: {
         hours: 0,
         entries: 0,
@@ -276,7 +277,7 @@ export async function buildWeeklyReport(
     : [];
 
   // Every member of an in-scope team gets a row, even at zero hours — a blank
-  // week is exactly what the PM and Director need to see.
+  // period is exactly what the PM and Director need to see.
   const members = new Map<string, MemberRow>();
   for (const m of memberships) {
     members.set(
@@ -358,7 +359,7 @@ export async function buildWeeklyReport(
       status: t.status,
       priority: t.priority,
       dueDate: t.dueDate ?? '',
-      hoursThisWeek: Number(
+      hoursThisPeriod: Number(
         t.workLogs
           .filter((w) => w.date >= from && w.date <= to)
           .reduce((s, w) => s + w.hours, 0)
@@ -377,13 +378,13 @@ export async function buildWeeklyReport(
 
   return {
     slug,
-    title: 'Weekly Status Report',
+    title: 'Bi-weekly Status Report',
     scopeLabel: label,
     generatedBy: `${user.name} (${user.role})`,
     generatedAt: new Date().toISOString(),
     from,
     to,
-    days: Array.from({ length: 7 }, (_, i) => addDays(from, i)),
+    days: Array.from({ length: PERIOD_DAYS }, (_, i) => addDays(from, i)),
     totals: {
       hours: Number(logs.reduce((s, l) => s + l.hours, 0).toFixed(2)),
       entries: logs.length,
@@ -401,9 +402,9 @@ export async function buildWeeklyReport(
   };
 }
 
-export function weeklyReportFilename(report: Pick<WeeklyReport, 'slug' | 'from' | 'to'>): string {
+export function periodReportFilename(report: Pick<PeriodReport, 'slug' | 'from' | 'to'>): string {
   const safeSlug = report.slug.replace(/[^A-Za-z0-9-_]+/g, '-').replace(/^-|-$/g, '') || 'report';
-  return `weekly-status_${safeSlug}_${report.from}_to_${report.to}.xlsx`;
+  return `biweekly-status_${safeSlug}_${report.from}_to_${report.to}.xlsx`;
 }
 
 /** Teams, projects and accounts the caller may export, for the report picker. */

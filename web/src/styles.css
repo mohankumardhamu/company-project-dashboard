@@ -624,3 +624,43 @@ textarea { resize: vertical; min-height: 76px; }
   .content { padding: 18px 16px 40px; }
   .topbar { padding: 14px 16px; }
 }
+
+/* ------------------------------ charts ------------------------------ */
+.hchart { display: flex; flex-direction: column; gap: 2px; }
+.hchart-row { display: grid; grid-template-columns: minmax(90px, 180px) 1fr; align-items: center; gap: 12px; min-height: 26px; border-radius: 6px; }
+.hchart-row.hover { background: var(--surface-2); }
+.hchart-label { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; }
+.hchart-track { position: relative; height: 26px; }
+.hchart-bar { position: absolute; left: 0; top: 7px; height: 12px; background: var(--brand); border-radius: 0 4px 4px 0; min-width: 2px; }
+.hchart-row.axis { min-height: 18px; }
+.hchart-row.axis .hchart-track { height: 18px; }
+.chart-grid-v { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.chart-tick-x { position: absolute; top: 2px; transform: translateX(-50%); font-size: 11px; color: var(--ink-3); }
+.chart-tick-x:first-child { transform: none; }
+
+.vchart { display: grid; grid-template-columns: 32px 1fr; grid-template-rows: 180px auto; column-gap: 8px; row-gap: 6px; }
+.vchart-axis { position: relative; }
+.vchart-axis span { position: absolute; right: 0; transform: translateY(50%); font-size: 11px; color: var(--ink-3); }
+.vchart-plot { position: relative; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line-2); }
+.chart-grid-h { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
+.vchart-col { position: relative; flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; border-radius: 6px 6px 0 0; }
+.vchart-col.hover { background: var(--surface-2); }
+.vchart-bar { width: min(28px, 60%); background: var(--brand); border-radius: 4px 4px 0 0; min-height: 2px; position: relative; }
+.vchart-labels { display: flex; gap: 2px; }
+.vchart-labels span { flex: 1; text-align: center; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vchart-labels span.strong { color: var(--ink); }
+
+.chart-tip { position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 7px; padding: 7px 10px; font-size: 12px; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-lg); }
+.hchart .chart-tip { left: 0; transform: none; }
+.chart-tip-label { color: #d1d5db; }
+.chart-tip-value { font-weight: 600; font-size: 13px; }
+.chart-tip-detail { color: #d1d5db; }
+
+/* ------------------------------ imports ------------------------------ */
+.coverage td.cell { text-align: center; }
+.coverage .yes { color: var(--ok); font-weight: 600; }
+.coverage .no { color: var(--ink-4); }
+.file-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grid.charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) { .grid.charts { grid-template-columns: minmax(0, 1fr); } }
+.import-result { align-items: flex-start; }

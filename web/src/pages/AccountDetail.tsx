@@ -26,7 +26,7 @@ export default function AccountDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function exportReport() {
-    await downloadFile(`/reports/weekly.xlsx?accountId=${id}`, 'weekly-report.xlsx');
+    await downloadFile(`/reports/biweekly.xlsx?accountId=${id}`, 'biweekly-report.xlsx');
   }
 
   async function verifyOutcome(outcomeId: string) {
@@ -71,7 +71,7 @@ export default function AccountDetailPage() {
         actions={
           can('ADMIN', 'PM', 'DIRECTOR', 'VP') && (
             <button className="btn" onClick={exportReport}>
-              Export weekly report
+              Export bi-weekly report
             </button>
           )
         }

@@ -20,7 +20,12 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   isProd: process.env.NODE_ENV === 'production',
 
-  // Weekly digest — off by default so nothing sends during development.
+  // Reporting periods are fortnights (Monday–Sunday x2) counted from this
+  // Monday. Every period boundary in the app derives from it, so changing it
+  // re-buckets all historical data — set it once to a sprint start and leave it.
+  biweekAnchor: process.env.BIWEEK_ANCHOR ?? '2026-01-05',
+
+  // Bi-weekly digest — off by default so nothing sends during development.
   digestEnabled: bool('DIGEST_ENABLED', false),
   digestCron: process.env.DIGEST_CRON ?? '0 8 * * 1',
   digestTimezone: process.env.DIGEST_TIMEZONE ?? 'UTC',
@@ -34,6 +39,13 @@ export const env = {
   smtpPass: process.env.SMTP_PASS ?? '',
   smtpFrom: process.env.SMTP_FROM ?? 'Project Dashboard <digest@localhost>',
 };
+
+if (
+  !/^\d{4}-\d{2}-\d{2}$/.test(env.biweekAnchor) ||
+  new Date(`${env.biweekAnchor}T00:00:00.000Z`).getUTCDay() !== 1
+) {
+  throw new Error(`BIWEEK_ANCHOR must be a Monday in YYYY-MM-DD form (got "${env.biweekAnchor}")`);
+}
 
 if (env.isProd && env.jwtSecret === 'dev-only-insecure-secret') {
   throw new Error('JWT_SECRET must be set to a real secret in production');

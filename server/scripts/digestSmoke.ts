@@ -1,5 +1,5 @@
 /**
- * Invokes the weekly digest job directly — no HTTP, no cron — with the file
+ * Invokes the bi-weekly digest job directly — no HTTP, no cron — with the file
  * adapter, and asserts the expected workbooks and recipients land in
  * outbox/. Requires a seeded database (npm run seed).
  * Usage: npm run smoke:digest
@@ -7,11 +7,11 @@
 import { eq } from 'drizzle-orm';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { endOfWeek, startOfWeek, today } from '../src/dates';
+import { endOfPeriod, startOfPeriod, today } from '../src/dates';
 import { db, pool } from '../src/db';
 import { accounts } from '../src/db/schema';
 import { createFileAdapter } from '../src/digest/fileAdapter';
-import { runWeeklyDigest } from '../src/digest/job';
+import { runDigest } from '../src/digest/job';
 
 let pass = 0;
 let fail = 0;
@@ -33,7 +33,7 @@ const OUTBOX = path.join(__dirname, '..', 'outbox');
 interface DigestMeta {
   scope: 'team' | 'account';
   to: string[];
-  week: { from: string; to: string };
+  period: { from: string; to: string };
 }
 
 function metaFor(slugPart: string, files: string[]): DigestMeta | null {
@@ -43,7 +43,7 @@ function metaFor(slugPart: string, files: string[]): DigestMeta | null {
 }
 
 async function run() {
-  console.log('\n── Weekly digest — file adapter');
+  console.log('\n── Bi-weekly digest — file adapter');
 
   // Clean slate so this run's files are unambiguous.
   if (existsSync(OUTBOX)) rmSync(OUTBOX, { recursive: true, force: true });
@@ -57,7 +57,7 @@ async function run() {
   const [emptyAccount] = await db.insert(accounts).values({ name: 'Digest Smoke Empty Account', code: EMPTY_CODE }).returning();
 
   const adapter = createFileAdapter(OUTBOX);
-  const summary = await runWeeklyDigest({ adapter });
+  const summary = await runDigest({ adapter });
   check('the run reports at least one sent item', summary.sent.length > 0, `sent=${summary.sent.length}`);
   check(
     'an account with recipients but no teams is skipped, not crashed on',
@@ -69,8 +69,8 @@ async function run() {
 
   const files = readdirSync(OUTBOX);
   const anchor = today();
-  const from = startOfWeek(anchor);
-  const to = endOfWeek(anchor);
+  const from = startOfPeriod(anchor);
+  const to = endOfPeriod(anchor);
 
   const expectFile = (slugPart: string) => {
     const xlsx = files.find((f) => f.includes(slugPart) && f.endsWith('.xlsx'));
@@ -89,9 +89,9 @@ async function run() {
     JSON.stringify(coreMeta?.to)
   );
   check(
-    'the meta sidecar records the week the job actually ran for',
-    Boolean(coreMeta) && coreMeta!.week.from === from && coreMeta!.week.to === to,
-    JSON.stringify(coreMeta?.week)
+    'the meta sidecar records the period the job actually ran for',
+    Boolean(coreMeta) && coreMeta!.period.from === from && coreMeta!.period.to === to,
+    JSON.stringify(coreMeta?.period)
   );
 
   const dataMeta = metaFor('Data-Enablement', files);

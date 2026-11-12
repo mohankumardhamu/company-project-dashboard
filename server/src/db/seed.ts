@@ -1,12 +1,15 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
-import { addDays, today } from '../dates';
+import { addDays, recentPeriods, today } from '../dates';
 import { db, pool } from './index';
 import {
   accounts,
+  importBatches,
+  kekaEmployees,
   outcomeTasks,
   outcomes,
   projects,
+  rallyItems,
   taskPriorityEnum,
   taskStatusEnum,
   tasks,
@@ -45,6 +48,9 @@ async function main() {
   await db.delete(teams);
   await db.delete(projects);
   await db.delete(accounts);
+  await db.delete(rallyItems);
+  await db.delete(kekaEmployees);
+  await db.delete(importBatches);
   await db.delete(users);
 
   const mk = (email: string, name: string, role: Role, createdById?: string) => ({
@@ -321,9 +327,9 @@ async function main() {
   ];
   const okStatuses: WorkLogStatus[] = ['ON_TRACK', 'ON_TRACK', 'AT_RISK', 'COMPLETED'];
 
-  // Three weeks of weekday entries so "this week" and "last week" both export.
+  // Five weeks of weekday entries so the current and previous bi-weekly periods both export.
   const logValues: Array<typeof workLogs.$inferInsert> = [];
-  for (let back = 20; back >= 0; back -= 1) {
+  for (let back = 34; back >= 0; back -= 1) {
     const day = addDays(today(), -back);
     const dow = new Date(`${day}T00:00:00Z`).getUTCDay();
     if (dow === 0 || dow === 6) continue;
@@ -344,6 +350,87 @@ async function main() {
   }
   if (logValues.length) {
     await db.insert(workLogs).values(logValues).onConflictDoNothing();
+  }
+
+  // Imported data, as if an Admin had uploaded the Keka directory and PMs had
+  // uploaded Rally exports. The three previous bi-weekly periods are complete;
+  // the current one only has Payments Core so far — a realistic coverage gap
+  // for the Data availability view. Ganesh is left out of Keka on purpose
+  // (a login with no directory record), and two directory people have no login.
+  const [kekaBatch] = await db
+    .insert(importBatches)
+    .values({ source: 'KEKA', fileName: 'keka-org-directory.csv', uploadedById: admin.id, totalRows: 17, importedRows: 17, skippedRows: 0 })
+    .returning();
+  const titleFor: Record<Role, [string, string]> = {
+    ADMIN: ['IT Administrator', 'IT'],
+    VP: ['VP Engineering', 'Engineering'],
+    DIRECTOR: ['Director of Delivery', 'Delivery'],
+    PM: ['Project Manager', 'Delivery'],
+    ENGINEER: ['Software Engineer', 'Engineering'],
+  };
+  const directoryPeople = [vp, dirEng, dirPlat, pmPay, pmMob, pmInfra, ...engineers].filter((u) => u.name !== 'Ganesh Pillai');
+  await db.insert(kekaEmployees).values([
+    ...directoryPeople.map((u, i) => ({
+      employeeNumber: `ACM${String(1001 + i)}`,
+      displayName: u.name,
+      jobTitle: titleFor[u.role][0],
+      department: titleFor[u.role][1],
+      location: pick(['Bengaluru', 'Chennai', 'Pune', 'Hyderabad']),
+      reporteesCount: u.role === 'ENGINEER' ? 0 : u.role === 'PM' ? 3 : 6,
+      userId: u.id,
+      batchId: kekaBatch.id,
+    })),
+    { employeeNumber: 'ACM1101', displayName: 'Rohan Joshi', jobTitle: 'QA Engineer', department: 'Engineering', location: 'Pune', reporteesCount: 0, userId: null, batchId: kekaBatch.id },
+    { employeeNumber: 'ACM1102', displayName: 'Kavya Reddy', jobTitle: 'UX Designer', department: 'Design', location: 'Hyderabad', reporteesCount: 0, userId: null, batchId: kekaBatch.id },
+  ]);
+
+  const storyTitles = [
+    'Settlement report export', 'Retry queue for callbacks', 'Ledger reconciliation job', 'Card tokenisation flow',
+    'Checkout latency budget', 'Push notification opt-in', 'Alerting runbook links', 'Autoscaler thresholds',
+    'Schema registry for events', 'Audit trail for refunds', 'Offline cart sync', 'Dashboard SSO',
+  ];
+  const doneStates = ['Accepted', 'Accepted', 'Completed', 'In-Progress', 'Defined'];
+  const pmFor = (u: (typeof engineers)[number]) =>
+    rosters.find((r) => r.teamId !== teamData.id && r.members.some((m) => m.id === u.id))!.pmId;
+  const [current, ...previous] = recentPeriods(4);
+  let storyNo = 300;
+  for (const period of [...previous].reverse().concat(current)) {
+    const owners = period === current ? engineers.slice(0, 3) : engineers;
+    for (const pmId of [...new Set(owners.map(pmFor))]) {
+      const mine = owners.filter((u) => pmFor(u) === pmId);
+      const rows = mine.flatMap((u) =>
+        Array.from({ length: 2 + Math.floor(rand() * 3) }, () => {
+          const estimate = pick([1, 2, 3, 5, 8]);
+          const state = period === current ? pick(['In-Progress', 'Completed', 'Defined']) : pick(doneStates);
+          const done = state === 'Accepted' || state === 'Completed';
+          storyNo += 1;
+          return {
+            periodStart: period.from,
+            workProduct: `${rand() > 0.8 ? 'DE' : 'US'}${storyNo}: ${pick(storyTitles)}`,
+            release: `R${Math.floor(storyNo / 20) - 14}`,
+            state,
+            estimate,
+            todo: done ? 0 : Number((estimate * (0.5 + rand())).toFixed(1)),
+            timeSpent: Number((estimate * (1.5 + rand() * 2)).toFixed(1)),
+            ownerRaw: u.name,
+            userId: u.id,
+          };
+        })
+      );
+      const [batch] = await db
+        .insert(importBatches)
+        .values({
+          source: 'RALLY',
+          fileName: `rally-export-${period.from}.xlsx`,
+          periodStart: period.from,
+          uploadedById: pmId,
+          totalRows: rows.length,
+          importedRows: rows.length,
+          skippedRows: 0,
+        })
+        .returning();
+      await db.insert(rallyItems).values(rows.map((r) => ({ ...r, batchId: batch.id })));
+    }
   }
 
   console.log(

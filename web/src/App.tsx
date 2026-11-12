@@ -6,10 +6,12 @@ import { Loading } from './components/ui';
 import AccountDetailPage from './pages/AccountDetail';
 import Accounts from './pages/Accounts';
 import Dashboard from './pages/Dashboard';
+import Imports from './pages/Imports';
 import Login from './pages/Login';
 import MyWork from './pages/MyWork';
 import People from './pages/People';
 import PortfolioPage from './pages/Portfolio';
+import ProductivityPage from './pages/Productivity';
 import ProjectDetailPage from './pages/ProjectDetail';
 import Projects from './pages/Projects';
 import Register from './pages/Register';
@@ -48,6 +50,8 @@ export default function App() {
         <Route path="/teams" element={<Teams />} />
         <Route path="/teams/:id" element={<TeamDetailPage />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/productivity" element={<ProductivityPage />} />
+        <Route path="/imports" element={<Imports />} />
         <Route
           path="/my-work"
           element={

@@ -24,7 +24,7 @@ export function createSmtpAdapter(): DigestAdapter {
         from: env.smtpFrom,
         to: message.to.join(', '),
         subject: message.subject,
-        text: `${message.scopeLabel}\n${message.week.from} to ${message.week.to}\n\nThe weekly workbook is attached.`,
+        text: `${message.scopeLabel}\n${message.period.from} to ${message.period.to}\n\nThe bi-weekly workbook is attached.`,
         attachments: [
           {
             filename: message.filename,

@@ -2,15 +2,17 @@ import cors from 'cors';
 import express from 'express';
 import { sql } from 'drizzle-orm';
 import { db, pool } from './db';
-import { scheduleWeeklyDigest } from './digest';
+import { scheduleDigest } from './digest';
 import { env } from './env';
 import { errorHandler } from './http';
 import { accountsRouter } from './routes/accounts';
 import { authRouter } from './routes/auth';
 import { digestRouter } from './routes/digest';
+import { importsRouter } from './routes/imports';
 import { outcomesRouter } from './routes/outcomes';
 import { overviewRouter } from './routes/overview';
 import { portfolioRouter } from './routes/portfolio';
+import { periodsRouter, productivityRouter } from './routes/productivity';
 import { projectsRouter } from './routes/projects';
 import { registerRouter } from './routes/register';
 import { reportsRouter } from './routes/reports';
@@ -52,6 +54,9 @@ app.use('/api/overview', overviewRouter);
 app.use('/api/portfolio', portfolioRouter);
 app.use('/api/digest', digestRouter);
 app.use('/api/register', registerRouter);
+app.use('/api/imports', importsRouter);
+app.use('/api/productivity', productivityRouter);
+app.use('/api/periods', periodsRouter);
 
 app.use((_req, res) => res.status(404).json({ error: 'Endpoint not found' }));
 app.use(errorHandler);
@@ -61,7 +66,7 @@ const server = app.listen(env.port, () => {
   console.log(`API listening on http://localhost:${env.port}`);
 });
 
-scheduleWeeklyDigest();
+scheduleDigest();
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

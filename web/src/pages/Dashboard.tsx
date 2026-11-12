@@ -17,7 +17,7 @@ const BLURB: Record<string, string> = {
 export default function Dashboard() {
   const { user } = useAuth();
   const { data, error, loading } = useApi<Overview>('/overview');
-  // Engineers never receive the weekly digest, so there's nothing to preview.
+  // Engineers never receive the bi-weekly digest, so there's nothing to preview.
   const digest = useApi<DigestPreview>(user?.role !== 'ENGINEER' ? '/digest/preview' : null);
 
   return (
@@ -37,21 +37,21 @@ export default function Dashboard() {
               <Stat label="Teams" value={data.totals.teams} foot="in your view" />
               <Stat label="People" value={data.totals.members} foot="across those teams" />
               <Stat
-                label="Hours this week"
-                value={hours(data.totals.thisWeek.hours)}
-                foot={`${data.totals.thisWeek.entries} entries · ${data.totals.thisWeek.contributors} people`}
+                label="Hours this period"
+                value={hours(data.totals.thisPeriod.hours)}
+                foot={`${data.totals.thisPeriod.entries} entries · ${data.totals.thisPeriod.contributors} people`}
               />
               <Stat
                 label="Blocked"
                 value={data.totals.tasks.blocked}
-                foot={`${data.totals.thisWeek.blocked} blocked entries this week`}
+                foot={`${data.totals.thisPeriod.blocked} blocked entries this period`}
               />
             </div>
 
             {digest.data && digest.data.items.length > 0 && (
               <Card
-                title="This week"
-                hint={`What the Monday digest sends you · ${formatRange(digest.data.week.from, digest.data.week.to)}`}
+                title="This period"
+                hint={`What the bi-weekly digest sends you · ${formatRange(digest.data.period.from, digest.data.period.to)}`}
                 flush
               >
                 <div className="table-wrap">
@@ -90,7 +90,7 @@ export default function Dashboard() {
 
             <Card
               title="Task mix"
-              hint={`Week of ${formatRange(data.week.from, data.week.to)} · ${data.totals.tasks.total} tasks in scope`}
+              hint={`Period ${formatRange(data.period.from, data.period.to)} · ${data.totals.tasks.total} tasks in scope`}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <TaskMixBar counts={data.totals.tasks} />

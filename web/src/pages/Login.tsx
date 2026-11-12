@@ -46,7 +46,7 @@ export default function Login() {
             <strong>Engineers</strong> log what they did each day against their tasks.
           </li>
           <li>
-            <strong>PMs</strong> build teams, assign tasks, and export the weekly report.
+            <strong>PMs</strong> build teams, assign tasks, and export the bi-weekly report.
           </li>
           <li>
             <strong>Directors</strong> create projects, attach teams, and drill all the way down.

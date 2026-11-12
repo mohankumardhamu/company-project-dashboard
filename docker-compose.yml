@@ -32,6 +32,7 @@ services:
       SEED_ADMIN_EMAIL: admin@acme.com
       SEED_VP_EMAIL: vp@acme.com
       SEED_VP_PASSWORD: Passw0rd!
+      BIWEEK_ANCHOR: '2026-01-05'
     ports:
       - '4000:4000'
     volumes:
